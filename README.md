@@ -9,7 +9,7 @@
 - Isolated per-account SQLite calendar/contact metadata, separate SQLite credential registry, a local administrator CLI, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
 - Container build, loopback-only example Compose configuration, health probe, CI checks (including an HTTP smoke suite), and integration/operations/security docs.
 
-**Validated on GitHub Actions:** Composer dependency resolution/audit, PHP syntax, security unit tests, SQLite CLI provisioning, authenticated HTTP PROPFIND, WebDAV PUT/GET, and denial of cross-account calendar/contact/file access. **Not yet verified:** production TLS/container startup, independent client interoperability, upgrade migrations, backup/restore, performance, and operational hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
+**Validated on GitHub Actions:** Composer dependency resolution/audit, PHP syntax, security unit tests, SQLite CLI provisioning, authenticated HTTP PROPFIND, CalDAV event PUT/GET, CardDAV contact PUT/GET, WebDAV file PUT/GET, and denial of cross-account calendar/contact/file access. **Not yet verified:** production TLS/container startup, independent client interoperability, upgrade migrations, backup/restore, performance, and operational hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
 
 ## Quick start (local isolated test only)
 
