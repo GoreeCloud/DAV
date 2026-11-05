@@ -1,0 +1,23 @@
+{
+  "name": "goreecloud/dav",
+  "description": "Private CalDAV, CardDAV and WebDAV backend for GoreeCloud applications",
+  "type": "project",
+  "require": {
+    "php": "^8.3",
+    "ext-pdo": "*",
+    "ext-pdo_sqlite": "*",
+    "ext-dom": "*",
+    "sabre/dav": "~4.6.0"
+  },
+  "autoload": {
+    "psr-4": {"GoreeCloud\\DAV\\": "src/"}
+  },
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {},
+    "audit": {"block-insecure": true}
+  },
+  "scripts": {
+    "test:unit": "@php tests/SecurityTest.php"
+  }
+}

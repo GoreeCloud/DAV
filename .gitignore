@@ -1,0 +1,10 @@
+/vendor/
+/var/
+/.env
+/.phpunit.cache/
+composer.phar
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.DS_Store

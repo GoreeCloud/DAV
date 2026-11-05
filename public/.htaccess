@@ -1,0 +1,6 @@
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+RewriteEngine On
+RewriteRule ^\.well-known/(caldav|carddav)$ index.php [END]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [END]

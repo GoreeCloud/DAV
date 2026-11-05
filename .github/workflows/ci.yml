@@ -1,0 +1,36 @@
+name: DAV checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, xml, dom
+          tools: composer:v2
+      - name: Validate dependency metadata
+        run: composer validate --no-check-publish
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+      - name: Check for vulnerable dependencies
+        run: composer audit
+      - name: PHP syntax
+        run: find src public bin tests -type f \( -name '*.php' -o -name 'dav' \) -exec php -l {} \;
+      - name: Security unit tests
+        run: php tests/SecurityTest.php
+      - name: Database/provision smoke
+        run: |
+          export DAV_DATA_DIR="$RUNNER_TEMP/dav-data"
+          php bin/dav init
+          printf 'test-password-12345\n' | php bin/dav user:add alice --password-stdin
+          php bin/dav status --json
+          php bin/dav user:list --json
+          printf 'changed-password-23456\n' | php bin/dav user:rotate alice --password-stdin
+          php bin/dav user:disable alice
+          php bin/dav user:enable alice
