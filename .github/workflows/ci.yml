@@ -34,3 +34,5 @@ jobs:
           printf 'changed-password-23456\n' | php bin/dav user:rotate alice --password-stdin
           php bin/dav user:disable alice
           php bin/dav user:enable alice
+      - name: HTTP DAV integration and account isolation
+        run: bash tests/IntegrationTest.sh

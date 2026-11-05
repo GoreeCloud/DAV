@@ -7,7 +7,7 @@
 - CalDAV calendar, event, recurrence and task protocol processing supplied by SabreDAV's CalDAV stack; CardDAV contacts and address books supplied by its CardDAV stack.
 - WebDAV file handling under a per-authenticated-account `/files/` root; DAV locks; standard conditional requests and sync support provided by the framework.
 - Single SQLite-backed metadata database, a local administrator CLI, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
-- Container build, loopback-only example Compose configuration, health probe, CI checks, and integration/operations/security docs.
+- Container build, loopback-only example Compose configuration, health probe, CI checks (including an HTTP smoke suite), and integration/operations/security docs.
 
 **Not yet verified:** actual protocol compatibility across clients, end-to-end provisioning, container startup, database migration safety, backup/restore, performance, and production hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
 
