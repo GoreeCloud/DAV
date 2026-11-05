@@ -59,17 +59,18 @@ printf 'disposable-test-password-12345\n' | docker exec --interactive --user www
 
 # Nginx is the ONLY host-published test component, bound to loopback.
 docker run --detach --name "$proxy" --network "$network" \
-  --publish "127.0.0.1:${port}:443" \
+  --publish "127.0.0.1:${port}:8443" \
+  --user "$(id -u):$(id -g)" \
   --read-only --tmpfs /tmp:rw,nosuid,size=16m \
   --tmpfs /var/cache/nginx:rw,nosuid,size=16m \
   --tmpfs /var/run:rw,nosuid,size=8m \
   --security-opt no-new-privileges:true \
-  --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
+  --cap-drop ALL \
   --mount "type=bind,src=${root}/tests/nginx-tls-smoke.conf,dst=/etc/nginx/nginx.conf,readonly" \
   --mount "type=bind,src=${workdir},dst=/etc/nginx/tls,readonly" \
   nginx:stable-alpine >/dev/null
 
-published="$(docker port "$proxy" 443/tcp)"
+published="$(docker port "$proxy" 8443/tcp)"
 [[ "$published" == "127.0.0.1:${port}" ]] || { echo "TLS listener not loopback-only: $published" >&2; exit 1; }
 proxy_ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$proxy")"
 if [[ -z "$proxy_ip" ]]; then
