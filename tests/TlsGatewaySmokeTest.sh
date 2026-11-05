@@ -62,7 +62,7 @@ docker run --detach --name "$proxy" --network "$network" \
   --publish "127.0.0.1:${port}:8443" \
   --user "$(id -u):$(id -g)" \
   --read-only --tmpfs /tmp:rw,nosuid,size=16m \
-  --tmpfs /var/cache/nginx:rw,nosuid,size=16m \
+  --tmpfs /var/cache/nginx:rw,nosuid,size=16m,mode=1777 \
   --tmpfs /var/run:rw,nosuid,size=8m \
   --security-opt no-new-privileges:true \
   --cap-drop ALL \
