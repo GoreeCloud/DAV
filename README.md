@@ -5,11 +5,13 @@
 ## Features present in source
 
 - CalDAV calendar, event, recurrence and task protocol processing supplied by SabreDAV's CalDAV stack; CardDAV contacts and address books supplied by its CardDAV stack.
-- WebDAV file handling under a per-authenticated-account `/files/` root; DAV locks; standard conditional requests and sync support provided by the framework.
-- Isolated per-account SQLite calendar/contact metadata, separate SQLite credential registry, a local administrator CLI, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
-- Container build, loopback-only example Compose configuration, health probe, CI checks (including an HTTP smoke suite), and integration/operations/security docs.
+- WebDAV file handling under a per-authenticated-account `/files/` root with guarded nested directory/file nodes that reject path escapes and symlinks **including linked ancestor paths**; GoreeCloud uses SHA-256 content-based file ETags to prevent stale validators after same-sized rewrites. DAV locks and conditional operations are supplied by the framework.
+- SQLite credential registry with separate per-account DAV metadata databases, a local administrator CLI and checksum-checked snapshot backups, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
+- Container build, loopback-only example Compose configuration, health probe, CI checks, and integration/operations/security docs. Failed account provisioning now cleans up SQLite database files inside the new account metadata directory, with a regression test.
 
-**Validated on GitHub Actions:** Composer dependency resolution/audit, PHP syntax, security unit tests, SQLite CLI provisioning, authenticated HTTP PROPFIND, CalDAV event PUT/GET, CardDAV contact PUT/GET, WebDAV file PUT/GET, and denial of cross-account calendar/contact/file access. **Not yet verified:** production TLS/container startup, independent client interoperability, upgrade migrations, backup/restore, performance, and operational hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
+**Offline recovery rehearsal in this development package:** the pinned SQLite schemas and `VACUUM INTO` were exercised with real isolated SQLite connections in WAL mode. The resulting registry, calendar, contact and file snapshot was verified by the PHP manifest checker and restored to a disposable directory; SQLite integrity and data checks passed. This does not establish that PHP PDO, the DAV operator command, or a production restore works.
+
+**Previously verified on the original GitHub draft:** account provisioning and basic HTTP CalDAV/CardDAV/WebDAV CRUD and tenant separation. **Not yet verified for these local changes:** expanded nested WebDAV operations, symlink denial, container startup, full disaster recovery, database migrations, independent client interoperability, performance and production hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
 
 ## Quick start (local isolated test only)
 
@@ -24,8 +26,6 @@ php bin/dav status --json
 ```
 
 For a local-only HTTP development test, set `DAV_REQUIRE_HTTPS=0` in a shell **only on a private test machine** and serve the `public/` directory using a supported PHP webserver. Do not send real credentials or personal data over plain HTTP. Production should use a hardened TLS reverse proxy; see [Operations](docs/OPERATIONS.md).
-
-See [third-party notices](docs/THIRD-PARTY-NOTICES.md) for attribution and licensing.
 
 ## Client contract
 
@@ -45,7 +45,7 @@ All DAV resources except the health probe and redirects require Basic credential
 
 ## Operator CLI
 
-`php bin/dav help` documents `init`, `status`, `user:add`, `user:rotate`, `user:disable`, `user:enable`, and `user:list`. User secrets are accepted via standard input only. Run administrative commands as the data-directory owner, **never through a public HTTP endpoint**.
+`php bin/dav help` documents `init`, `status`, `user:add`, `user:rotate`, `user:disable`, `user:enable`, `user:list`, `backup:create`, and `backup:verify`. The snapshot uses SQLite `VACUUM INTO`, a versioned manifest of file checksums and empty directories, a non-symlinked destination-parent requirement, and a shared/exclusive cooperative lock; it is not an offsite encrypted backup or a tested production restore. User secrets are accepted via standard input only. Run administrative commands as the data-directory owner, **never through a public HTTP endpoint**.
 
 ## Architecture and limitations
 
@@ -59,4 +59,8 @@ This repo is public; **never commit real contact records, calendar data, passwor
 
 ## Dependency provenance
 
-Protocol engine: `sabre/dav` v4.6 series, BSD-3-Clause licensed upstream; a pinned, attributed SQLite schema derived from upstream examples is included in `resources/sql/`, with no demo accounts. Review upstream licensing, advisories, and transitive dependencies before releases. The application code and docs are GoreeCloud-maintained. License choice for the GoreeCloud-owned code is pending the founder's explicit open-source licensing decision; public source visibility does not itself grant redistribution rights.
+Protocol engine: `sabre/dav` v4.6 series, BSD-3-Clause licensed upstream; a pinned adapted SQLite schema derived from upstream examples is attributed in `docs/THIRD-PARTY-NOTICES.md`, and demo accounts are not seeded. Review upstream licensing, advisories, and transitive dependencies before releases. The application code and docs are GoreeCloud-maintained. License choice for the GoreeCloud-owned code is pending the founder's explicit open-source licensing decision; public source visibility does not itself grant redistribution rights.
+
+## Release-test work in progress
+
+An additional, **not-yet-validated** disposable Docker/Apache smoke job is authored in `.github/workflows/ci.yml` and `tests/DockerSmokeTest.sh`. It is designed to validate image build/startup, no seeded users, private-volume ownership, HTTP/TLS-gateway denial, proxy-aware authenticated CalDAV discovery, and the real PHP/SQLite snapshot CLI. See [Operations](docs/OPERATIONS.md). This source is a local review package until the remote draft PR is updated and its workflow actually passes; its presence is not evidence of a working deployment.

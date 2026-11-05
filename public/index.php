@@ -7,6 +7,7 @@ use GoreeCloud\DAV\Config;
 use GoreeCloud\DAV\Credentials;
 use GoreeCloud\DAV\Database;
 use GoreeCloud\DAV\ServerFactory;
+use GoreeCloud\DAV\ServiceLock;
 
 require dirname(__DIR__).'/vendor/autoload.php';
 date_default_timezone_set('UTC');
@@ -33,6 +34,9 @@ try {
         echo 'TLS is required for DAV access.';
         exit;
     }
+    // A shared lock lasts for the entire DAV request, including streamed writes.
+    // Operator snapshots hold an exclusive lock until metadata and files are copied.
+    $serviceLock = ServiceLock::shared();
     $pdo = Database::connect();
     $auth = new Auth($pdo);
     $credentials = Credentials::basicCredentials($_SERVER);

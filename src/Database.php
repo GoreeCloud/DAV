@@ -30,7 +30,8 @@ final class Database
 
     private static function sqlite(string $path, bool $mustExist): PDO
     {
-        if (!is_dir(dirname($path)) || ($mustExist && !is_file($path))) {
+        self::assertPrivateStoragePath($path);
+        if (!is_dir(dirname($path)) || is_link($path) || ($mustExist && !is_file($path))) {
             throw new \RuntimeException('DAV database missing; initialize service or account first');
         }
         $pdo = new PDO('sqlite:'.$path, null, null, [
@@ -42,6 +43,32 @@ final class Database
         $pdo->exec('PRAGMA busy_timeout = 10000');
         $pdo->exec('PRAGMA journal_mode = WAL');
         return $pdo;
+    }
+
+    /**
+     * Reject linked SQLite registry/metadata components, not just a linked
+     * database file. This must be checked before opening SQLite, which would
+     * otherwise follow an ancestor symlink to an untrusted database.
+     * Host storage permissions must also prevent local symlink-swap races.
+     */
+    public static function assertPrivateStoragePath(string $path): void
+    {
+        $root = Config::dataDir();
+        if (is_link($root) || !is_dir($root) || !str_starts_with($path, $root.'/')) {
+            throw new \RuntimeException('DAV database path is outside private storage');
+        }
+        $relative = substr($path, strlen($root) + 1);
+        $cursor = $root;
+        foreach (explode('/', $relative) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..' || str_contains($segment, "\0")) {
+                throw new \RuntimeException('Invalid DAV database path');
+            }
+            $cursor .= '/'.$segment;
+            clearstatcache(true, $cursor);
+            if (is_link($cursor)) {
+                throw new \RuntimeException('Symlink in DAV database path');
+            }
+        }
     }
 
     public static function initialize(): void

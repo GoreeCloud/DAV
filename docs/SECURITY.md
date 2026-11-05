@@ -6,9 +6,11 @@
 
 - No default user, password, self-signup, admin web UI, anonymous DAV file access or public shares.
 - Argon2id hashes and minimum 12-byte passwords, non-argument standard-input CLI credentials, user enable/disable and rotation.
-- Pre-authentication before filesystem selection; per-account storage directories; read-only repo container filesystem with named data volume in example Compose.
+- Pre-authentication before filesystem selection; per-account storage directories; guarded WebDAV file/directory nodes reject symlinks (including linked account-root ancestors), traversal, and moves outside the assigned account root, including in nested subdirectories; read-only repo container filesystem with named data volume in example Compose.
 - HTTPS enforcement defaults on; `X-Forwarded-Proto` is honored only for explicitly trusted direct proxy IPs. Containers bind to host loopback only by default.
-- Strict username allowlist, SQLite prepared statements, restrictive local permissions, protected document root, disabled directory listing, no detailed HTTP exception output.
+- Private WebDAV file ETags now use a content SHA-256 digest. The upstream inode/size/second-resolution-mtime ETag can fail to change after same-sized rapid writes, leading to stale conditional HTTP responses. File hashing is intentionally correctness-first; benchmark large files and consider persistent revision metadata before production scale.
+- Strict username allowlist, SQLite prepared statements, rejection of symlinked `DAV_DATA_DIR` ancestors and registry/metadata database paths, restrictive local permissions, protected document root, disabled directory listing, no detailed HTTP exception output.
+- Cooperative request/administration locking and a local-only snapshot/verification command preserve an atomic copy of the SQLite registry, per-account metadata, and file tree under controlled writers. Snapshots are sensitive plaintext and require separate encryption/offsite handling. SHA-256 verification detects accidental damage or missing/untracked resources but does not authenticate an attacker-controlled manifest; an independently protected digest/signature and restore rehearsal remain release requirements.
 - Dependencies are installed through Composer; CI includes syntax tests and audit job. No guarantee until builds finish successfully.
 
 ## Threat model and open risks
@@ -18,10 +20,10 @@
 | Network credential theft | TLS-only setting; verify proxy topology and client certificate checks; never enable HTTP mode in production |
 | Password brute force | **No in-app throttle.** Caddy/Gateway must enforce rate limits and alerts; prefer private VPN-only exposure initially |
 | Credential theft / stolen device | A password has full account access. App-specific revocable tokens and optional MFA/OIDC are a future milestone |
-| Cross-user calendar/contact access | SabreDAV ACL expected; **not verified by actual two-user integration tests** |
-| Cross-user file access | Pre-authenticated per-user FS mount; needs symlink/path traversal and concurrent-user security tests |
+| Cross-user calendar/contact access | Physical per-account SQLite stores plus two-user HTTP isolation smoke tests; broader REPORT/ACL audit required |
+| Cross-user file access | Pre-authenticated per-user FS mount; local boundary tests reject path traversal and symlink escapes; new WebDAV symlink/MOVE/MKCOL HTTP regression tests are authored but not remotely run |
 | Unsafe file uploads | No antivirus scanner, quota, per-account limits, content inspection or file versioning. Apply reverse-proxy upload size and timeout limits |
-| Storage loss | Database and file volume need consistent off-site encrypted backups and tested restoration |
+| Storage loss | Offline snapshot command plus manifest integrity check added; **off-site encryption, independent full restore drills and retention remain outstanding** |
 | Dependency or supply-chain exploit | Pin a reviewed Composer lockfile, use a trusted build pipeline and security scanning; current build can resolve within version constraints |
 | Service denial of service | Rate/size/time/resource limits, alerting and bounded concurrency required before live exposure |
 | Sensitive audit logs | Avoid credential and DAV payload logging; define redacted request IDs and privacy-preserving audit logging before production |
@@ -32,7 +34,7 @@
 1. Dependency installation and audit, full PHP 8.3 runtime test with SQLite and container startup, no default sample principals.
 2. End-to-end DAV method and interoperability matrix; forbidden cross-user reads/writes across all three DAV surfaces.
 3. Preauth `Authorization` header pass-through and malicious `X-Forwarded-Proto` negative tests; TLS/HSTS at verified proxy.
-4. Backup, database integrity check, full restore and upgrade/rollback rehearsal on disposable data.
+4. Run the authored snapshot/hash-verifier CI (not yet run remotely), plus database integrity check, complete independent restore and upgrade/rollback rehearsal on disposable data (pending).
 5. Review storage permissions, privilege separation, container read-only execution and resource limits with real target host configuration.
 6. Apply throttling, bounded body size, metrics, redacted logs and incident response path. Conduct independent security review.
 7. Document supported client matrix, version pinning, migration approach, operations runbook and release approval.
@@ -42,3 +44,19 @@ For security reports, avoid posting credentials or live data in public issues. C
 ## Hardened tenant data partitioning
 
 Global credentials and tenant DAV objects are stored in separate SQLite databases. Each authenticated request opens only that principal's DAV metadata database and WebDAV file root. No cross-user calendar or address book sharing is supported in this foundation. Preserve permissions on `metadata/` and `files/`, and verify tenant boundaries using CI's integration suite. This is defense in depth; audit future scheduling/sharing plugins before enabling them.
+
+## Cooperative-lock threat boundary
+
+`ServiceLock` synchronizes requests and CLI operations using an advisory file lock inside the private data directory. It is a defense against in-process writes during `backup:create`, **not** a substitute for service drain, filesystem permissions or isolated host backups. Other writers that ignore the lock can still corrupt a backup. The backup target is intentionally a new private directory whose existing parent path is checked for symlinks; anyone with access to its files can see personal data and password hashes. Never place the backup under a web root or commit it to Git.
+
+## Filesystem adapter boundary (review branch hardening not yet in GitHub)
+
+Upstream `Sabre\DAV\FS\Directory` creates ordinary child directories and files that follow PHP filesystem semantics. An imported or externally introduced symlink could otherwise lead the WebDAV adapter outside its assigned filesystem root. GoreeCloud's local `PrivateDirectory`, `PrivateFile`, and `PrivateFilesystemGuard` classes propagate a canonical account-root guard to nested nodes and reject linked resource paths, path traversal, and attempts to move or delete the mount root. Linked entries are hidden in directory listings. The guard also checks every ancestor of the initial account root before calling `realpath()`, preventing a symlinked parent such as `files -> /external` from silently relocating the root. `Config::dataDir()` rejects linked ancestors outside the web root as well. The guard prevents expected escapes for a trusted host filesystem, **not** symlink-swap time-of-check/time-of-use races by malicious local processes; ownership and volume permissions must prohibit untrusted concurrent writers. Revalidate against installed SabreDAV v4.6, including COPY/MOVE/LOCK in HTTP CI and an isolated deployment before enabling client access.
+
+### Local verification, November 5, 2026
+
+A pure-PHP regression reproduced an initially accepted account root whose parent was a symlink redirecting outside the declared storage path. The local fix now rejects that root, plus symlinked ancestors of `DAV_DATA_DIR`. Provisioning failure rollback was also corrected to delete files within `metadata/<account>/` rather than incorrectly addressed siblings. Seven local unit suites pass, including backup destination parent-symlink rejection and strong WebDAV ETag regression, but these changes have **not** run in remote GitHub CI and are not deployed. Backup, client and production release gates remain open.
+
+## Container smoke test release evidence (pending)
+
+The local review package adds an isolated GitHub Actions `container-smoke` job. The job is intended to test the read-only Docker image with a new disposable volume, loopback publishing, `www-data` storage ownership, spoofed TLS-header rejection, explicitly trusted test proxy behavior, and SQLite operator backup execution. The job has **not run on GitHub for this change set**. Its header simulation does not establish real end-to-end TLS; independent reverse-proxy and certificate checks are mandatory before external exposure.

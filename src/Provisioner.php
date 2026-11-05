@@ -58,14 +58,25 @@ final class Provisioner
                 $userPdo->rollBack();
             }
             $userPdo = null;
-            // Cleanup only directories created during this failed account addition.
-            foreach (['/dav.sqlite-shm', '/dav.sqlite-wal', '/dav.sqlite'] as $suffix) {
-                @unlink($metadata.$suffix);
-            }
-            @rmdir($metadata);
-            @rmdir($files);
+            // Cleanup only the new account's storage; never touch established accounts.
+            self::cleanupFailedAdd($files, $metadata);
             throw $e;
         }
+    }
+
+    private static function cleanupFailedAdd(string $files, string $metadata): void
+    {
+        // These are files *inside* metadata/<username>/, not siblings of it.
+        // Unlinking $metadata.$suffix leaves an orphaned SQLite database after
+        // an account provisioning failure and blocks a safe retry.
+        foreach (['dav.sqlite-shm', 'dav.sqlite-wal', 'dav.sqlite'] as $filename) {
+            $path = $metadata.'/'.$filename;
+            if (!is_link($path)) {
+                @unlink($path);
+            }
+        }
+        @rmdir($metadata);
+        @rmdir($files);
     }
 
     public function rotate(string $username, string $password): void

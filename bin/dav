@@ -7,6 +7,8 @@ use GoreeCloud\DAV\Credentials;
 use GoreeCloud\DAV\Config;
 use GoreeCloud\DAV\Database;
 use GoreeCloud\DAV\Provisioner;
+use GoreeCloud\DAV\ServiceLock;
+use GoreeCloud\DAV\Backup;
 
 require dirname(__DIR__).'/vendor/autoload.php';
 date_default_timezone_set('UTC');
@@ -24,6 +26,8 @@ Commands:
   user:disable NAME
   user:enable NAME
   user:list [--json]       Display usernames and enabled status only
+  backup:create /absolute/new-directory [--json]  Coordinated SQLite and files snapshot
+  backup:verify /absolute/directory [--json]     Check snapshot SHA-256 integrity
   help                     Show this help
 Secrets must be supplied on standard input, not argv or environment variables.
 HELP;
@@ -43,6 +47,17 @@ try {
         echo "Database initialized (no default accounts).\n";
         exit(0);
     }
+    if ($command === 'backup:verify') {
+        $result = Backup::verify($name);
+        echo $json ? json_encode($result, JSON_THROW_ON_ERROR).PHP_EOL : 'Backup verified: '.($result['files']).' files'.PHP_EOL;
+        exit(0);
+    }
+    if ($command === 'backup:create') {
+        $result = Backup::create($name);
+        echo $json ? json_encode($result, JSON_THROW_ON_ERROR).PHP_EOL : 'Backup created and verified: '.($result['files']).' files'.PHP_EOL;
+        exit(0);
+    }
+    $serviceLock = in_array($command, ['status', 'user:list'], true) ? ServiceLock::shared() : ServiceLock::exclusive();
     $pdo = Database::connect();
     $users = new Provisioner($pdo);
     switch ($command) {

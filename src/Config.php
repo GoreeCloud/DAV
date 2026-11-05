@@ -10,8 +10,41 @@ final class Config
     {
         $value = getenv('DAV_DATA_DIR');
         $path = rtrim($value !== false && $value !== '' ? $value : dirname(__DIR__).'/var', '/');
-        if ($path === '' || $path[0] !== '/' || $path === '/var/www/html' || str_contains($path, '..')) {
+        if ($path === '' || $path[0] !== '/' || $path === '/' || str_contains($path, "\0")
+            || preg_match('~(?:^|/)\.{1,2}(?:/|$)~', $path)) {
             throw new \RuntimeException('DAV_DATA_DIR must be an absolute private data directory');
+        }
+        // Neither live DAV data nor backup state may be placed in the HTTP document root.
+        $public = realpath(dirname(__DIR__).'/public');
+        // Resolve the nearest existing ancestor even when the final directory has
+        // not been created. Otherwise an uncreated path below a symlink into
+        // public/ can evade the web-root check.
+        $ancestor = $path;
+        while (!file_exists($ancestor) && !is_link($ancestor)) {
+            $parent = dirname($ancestor);
+            if ($parent === $ancestor) {
+                break;
+            }
+            $ancestor = $parent;
+        }
+        $realAncestor = realpath($ancestor);
+        if ($realAncestor === false || is_link($path)) {
+            throw new \RuntimeException('DAV_DATA_DIR has an unsafe or unresolvable path');
+        }
+        $resolved = rtrim(rtrim($realAncestor, '/').'/'.ltrim(substr($path, strlen($ancestor)), '/'), '/');
+        if ($public !== false && ($resolved === $public || str_starts_with($resolved, $public.'/'))) {
+            throw new \RuntimeException('DAV_DATA_DIR must not be inside the HTTP document root');
+        }
+        // Do not accept private state whose apparent path traverses a symlink.
+        // A linked intermediate parent is just as dangerous as a linked data root:
+        // SQLite, backups and file mounts must resolve to the expected location.
+        $cursor = $path;
+        while ($cursor !== '' && $cursor !== '/') {
+            clearstatcache(true, $cursor);
+            if (is_link($cursor)) {
+                throw new \RuntimeException('DAV_DATA_DIR has a symlinked ancestor');
+            }
+            $cursor = dirname($cursor);
         }
         return $path;
     }

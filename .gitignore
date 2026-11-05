@@ -8,3 +8,7 @@ composer.phar
 *.db
 *.db-*
 .DS_Store
+
+# Local Python recovery-test cache
+__pycache__/
+*.pyc

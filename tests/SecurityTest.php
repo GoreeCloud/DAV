@@ -30,6 +30,55 @@ try {
 } catch (RuntimeException $e) {
     expect(str_contains($e->getMessage(), 'DAV_DATA_DIR'), 'reject relative data dir');
 }
+putenv('DAV_DATA_DIR=/');
+try {
+    Config::dataDir();
+    throw new RuntimeException('root data directory accepted');
+} catch (RuntimeException $e) {
+    expect(str_contains($e->getMessage(), 'DAV_DATA_DIR'), 'reject root as data directory');
+}
+putenv('DAV_DATA_DIR=' . dirname(__DIR__) . '/public/unsafe-data');
+try {
+    Config::dataDir();
+    throw new RuntimeException('web-accessible data directory accepted');
+} catch (RuntimeException $e) {
+    expect(str_contains($e->getMessage(), 'HTTP document root'), 'reject web-accessible data');
+}
+// A symlinked existing ancestor must not redirect an uncreated data directory
+// into the public HTTP document root.
+$webAlias = sys_get_temp_dir().'/goreecloud-dav-public-alias-'.bin2hex(random_bytes(8));
+if (!symlink(dirname(__DIR__).'/public', $webAlias)) {
+    throw new RuntimeException('Could not create symlink regression fixture');
+}
+try {
+    putenv('DAV_DATA_DIR='.$webAlias.'/uncreated-sensitive-data');
+    try {
+        Config::dataDir();
+        throw new RuntimeException('Symlinked web root accepted');
+    } catch (RuntimeException $e) {
+        expect(str_contains($e->getMessage(), 'HTTP document root'), 'reject web root via symlink ancestor');
+    }
+} finally {
+    unlink($webAlias);
+}
+// Redirecting the data directory through an unrelated symlink is unsafe,
+// even if the target is not the public document root.
+$nonPublic = sys_get_temp_dir().'/goreecloud-dav-nonpublic-'.bin2hex(random_bytes(8));
+mkdir($nonPublic, 0700);
+$storageAlias = $nonPublic.'-linked';
+try {
+    symlink($nonPublic, $storageAlias);
+    putenv('DAV_DATA_DIR='.$storageAlias.'/private');
+    try {
+        Config::dataDir();
+        throw new RuntimeException('Symlinked non-public data root accepted');
+    } catch (RuntimeException $e) {
+        expect(str_contains($e->getMessage(), 'symlinked ancestor'), 'reject non-public linked ancestor');
+    }
+} finally {
+    unlink($storageAlias);
+    rmdir($nonPublic);
+}
 putenv('DAV_DATA_DIR');
 expect(!Config::isSecure(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_PROTO' => 'https']), 'do not trust arbitrary proxy headers');
 expect(Config::isSecure(['HTTPS' => 'on']), 'recognize direct TLS');
