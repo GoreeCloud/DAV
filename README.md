@@ -25,6 +25,8 @@ php bin/dav status --json
 
 For a local-only HTTP development test, set `DAV_REQUIRE_HTTPS=0` in a shell **only on a private test machine** and serve the `public/` directory using a supported PHP webserver. Do not send real credentials or personal data over plain HTTP. Production should use a hardened TLS reverse proxy; see [Operations](docs/OPERATIONS.md).
 
+See [third-party notices](docs/THIRD-PARTY-NOTICES.md) for attribution and licensing.
+
 ## Client contract
 
 Assuming an assigned backend host, such as `https://dav.example.invalid/` (illustrative, **not a deployed hostname**):

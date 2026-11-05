@@ -11,6 +11,7 @@ RUN docker-php-ext-install pdo_sqlite && a2enmod rewrite headers \
 COPY --from=deps /app/vendor /var/www/html/vendor
 COPY composer.json /var/www/html/composer.json
 COPY src/ /var/www/html/src/
+COPY resources/ /var/www/html/resources/
 COPY bin/ /var/www/html/bin/
 COPY public/ /var/www/html/public/
 RUN sed -ri 's!DocumentRoot /var/www/html!DocumentRoot /var/www/html/public!g' /etc/apache2/sites-available/000-default.conf \

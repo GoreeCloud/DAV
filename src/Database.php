@@ -44,27 +44,23 @@ final class Database
         @chmod($file, 0600);
         try {
             $pdo->beginTransaction();
-            $sqlDir = dirname(__DIR__).'/vendor/sabre/dav/examples/sql';
-            foreach (['principals', 'calendars', 'addressbooks', 'locks'] as $area) {
-                $schemaPath = $sqlDir.'/sqlite.'.$area.'.sql';
-                $sql = @file_get_contents($schemaPath);
-                if ($sql === false) {
-                    throw new \RuntimeException('Missing SabreDAV schema: '.$schemaPath);
-                }
-                // Dependency example schemas contain demo users. Only execute CREATE statements.
-                $sql = preg_replace('/--[^\r\n]*/', '', $sql);
-                foreach (explode(';', $sql) as $statement) {
-                    $statement = trim($statement);
-                    if ($statement === '' || preg_match('/^INSERT\s+INTO\b/i', $statement)) {
-                        continue;
-                    }
-                    if (!preg_match('/^CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX)\b/i', $statement)) {
-                        throw new \RuntimeException('Unexpected operation in vendor schema for '.$area);
-                    }
-                    $pdo->exec($statement);
-                }
+            $schemaPath = dirname(__DIR__).'/resources/sql/001-initial.sql';
+            $sql = @file_get_contents($schemaPath);
+            if ($sql === false) {
+                throw new \RuntimeException('Missing GoreeCloud DAV schema');
             }
-            $pdo->exec('CREATE TABLE goreecloud_accounts (username TEXT PRIMARY KEY NOT NULL, password_hash TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), created_at INTEGER NOT NULL)');
+            // Source-controlled schema, pinned and reviewed; no bundled vendor examples.
+            $sql = preg_replace('/--[^\r\n]*/', '', $sql);
+            foreach (explode(';', $sql) as $statement) {
+                $statement = trim($statement);
+                if ($statement === '') {
+                    continue;
+                }
+                if (!preg_match('/^CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX)\b/i', $statement)) {
+                    throw new \RuntimeException('Unexpected operation in DAV schema');
+                }
+                $pdo->exec($statement);
+            }
             $pdo->commit();
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
