@@ -148,6 +148,40 @@ if [[ "$move_code" != 201 && "$move_code" != 204 ]]; then expect "$move_code" 20
 expect "$(status -u 'alice:alice-test-password-12345' "$base/files/subfolder/new.txt")" 200 'moved nested file'
 expect "$(status -u 'bob:bob-test-password-67890' "$base/files/subfolder/new.txt")" 404 'nested file tenant isolation'
 
+# Verify WebDAV COPY and write-lock lifecycle on an existing private file.
+copy_code="$(status -u 'alice:alice-test-password-12345' -X COPY \
+  -H "Destination: $base/files/subfolder/copied.txt" "$base/files/subfolder/new.txt")"
+if [[ "$copy_code" != 201 && "$copy_code" != 204 ]]; then
+  expect "$copy_code" 201 'WebDAV nested COPY'
+fi
+expect "$(status -u 'alice:alice-test-password-12345' "$base/files/subfolder/copied.txt")" 200 'copied WebDAV file GET'
+grep -qx 'nested-private-content' "$work/response"
+cat >"$work/lock.xml" <<'LOCKXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<D:lockinfo xmlns:D="DAV:">
+  <D:lockscope><D:exclusive/></D:lockscope>
+  <D:locktype><D:write/></D:locktype>
+  <D:owner><D:href>mailto:ci-test@example.invalid</D:href></D:owner>
+</D:lockinfo>
+LOCKXML
+lock_code="$(status -u 'alice:alice-test-password-12345' -X LOCK \
+  -H 'Content-Type: application/xml' -H 'Depth: 0' -H 'Timeout: Second-60' \
+  -D "$work/lock-headers" --data-binary @"$work/lock.xml" "$base/files/subfolder/copied.txt")"
+if [[ "$lock_code" != 200 && "$lock_code" != 201 ]]; then
+  expect "$lock_code" 200 'WebDAV exclusive LOCK'
+fi
+lock_token="$(awk 'tolower($1)=="lock-token:" {gsub("\r", "", $2); print $2; exit}' "$work/lock-headers")"
+if [[ -z "$lock_token" ]]; then
+  echo 'Expected WebDAV Lock-Token response header' >&2
+  exit 1
+fi
+expect "$(status -u 'alice:alice-test-password-12345' -X PUT \
+  --data-binary @"$work/nested-payload" "$base/files/subfolder/copied.txt")" 423 'WebDAV locked PUT denied'
+expect "$(status -u 'alice:alice-test-password-12345' -X UNLOCK \
+  -H "Lock-Token: $lock_token" "$base/files/subfolder/copied.txt")" 204 'WebDAV UNLOCK'
+expect "$(status -u 'alice:alice-test-password-12345' -X PUT \
+  --data-binary @"$work/nested-payload" "$base/files/subfolder/copied.txt")" 204 'WebDAV PUT after UNLOCK'
+
 # Simulate a locally introduced symlink. The DAV server must not follow it,
 # overwrite its target, or reveal it in collection listings.
 printf 'fixture-outside-secret' >"$work/outside-secret"
