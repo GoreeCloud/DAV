@@ -15,18 +15,9 @@ jobs:
           extensions: pdo_sqlite, mbstring, xml, dom
           tools: composer:v2
       - name: Validate dependency metadata
-        run: composer validate --no-check-publish
+        run: test -s composer.lock && composer validate --no-check-publish
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-scripts
-      # Temporary source-only lockfile export for review. Remove after pinning.
-      # Emits dependency metadata only, never environment variables or secrets.
-      - name: Generate reproducible Composer lockfile for review
-        run: |
-          test -s composer.lock
-          echo 'GOREEDAV_LOCK_BEGIN'
-          base64 -w 0 composer.lock
-          echo
-          echo 'GOREEDAV_LOCK_END'
       - name: Check for vulnerable dependencies
         run: composer audit
       - name: PHP syntax

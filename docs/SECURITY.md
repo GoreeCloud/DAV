@@ -12,7 +12,7 @@
 - Private WebDAV file ETags now use a content SHA-256 digest. The upstream inode/size/second-resolution-mtime ETag can fail to change after same-sized rapid writes, leading to stale conditional HTTP responses. File hashing is intentionally correctness-first; benchmark large files and consider persistent revision metadata before production scale.
 - Strict username allowlist, SQLite prepared statements, rejection of symlinked `DAV_DATA_DIR` ancestors and registry/metadata database paths, restrictive local permissions, protected document root, disabled directory listing, no detailed HTTP exception output.
 - Cooperative request/administration locking and a local-only snapshot/verification command preserve an atomic copy of the SQLite registry, per-account metadata, and file tree under controlled writers. Snapshots are sensitive plaintext and require separate encryption/offsite handling. SHA-256 verification detects accidental damage or missing/untracked resources but does not authenticate an attacker-controlled manifest; an independently protected digest/signature and restore rehearsal remain release requirements.
-- Dependencies are installed through Composer; CI includes syntax tests and audit job. No guarantee until builds finish successfully.
+- `composer.lock` pins exact PHP package versions and the Docker dependency layer copies that file before `composer install`; CI checks lockfile metadata, runs syntax tests and performs Composer audit. Additional base-image/CI action pinning remains required.
 
 ## Threat model and open risks
 
@@ -25,7 +25,7 @@
 | Cross-user file access | Pre-authenticated per-user FS mount; local boundary tests reject path traversal and symlink escapes; WebDAV symlink/MOVE/MKCOL HTTP regression tests passed in CI on commit 4730bba; a broader independent audit is pending |
 | Unsafe file uploads | No antivirus scanner, per-account quota, content inspection or file versioning. Apache hard-caps bodies at 64 MiB; also apply reverse-proxy upload size and timeout limits |
 | Storage loss | Offline snapshot command plus manifest integrity check added; **off-site encryption, independent full restore drills and retention remain outstanding** |
-| Dependency or supply-chain exploit | Pin a reviewed Composer lockfile, use a trusted build pipeline and security scanning; current build can resolve within version constraints |
+| Dependency or supply-chain exploit | `composer.lock` pins PHP packages, generated on the PHP 8.3 CI runner. CI validates/audits it. Container base-image digests, action SHAs, OS-package versions and release provenance still need pinning/review. |
 | Service denial of service | Apache request-size/read time bounds added; rate limiting, per-user quotas, concurrency bounds, alerting and gateway limits still required before live exposure |
 | Sensitive audit logs | Avoid credential and DAV payload logging; define redacted request IDs and privacy-preserving audit logging before production |
 | Public health probe | Limited to process liveness, no user/database/version information; restrict monitoring exposure at gateway |

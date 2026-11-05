@@ -107,3 +107,7 @@ bash tests/DockerSmokeTest.sh
 ```
 
 Use a free local port or set `DAV_SMOKE_PORT` to a free nonprivileged port; do not run alongside production containers or reuse an existing volume.
+
+## PHP dependency lock and update procedure
+
+The committed `composer.lock` pins the PHP package graph. `composer install --no-dev --no-interaction --prefer-dist --no-scripts` in the image uses that lock; a missing/stale lock fails CI validation instead of silently resolving new versions. Periodic upgrades should happen on a separate reviewed branch using PHP 8.3 and Composer 2: run `composer update --no-interaction --no-scripts` in a trusted disposable environment, inspect package diffs and license/advisory changes, then rerun the complete CI/Docker matrix before approving a new lockfile. Never run an unreviewed dependency-update script on production. The lock does not pin the Docker base image, OS packages or GitHub Actions versions, which remain open supply-chain gates.

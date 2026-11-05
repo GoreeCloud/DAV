@@ -35,3 +35,5 @@ are permitted provided that the following conditions are met:
     POSSIBILITY OF SUCH DAMAGE.
 
 Dependency audit and compliance checks must cover the resolved dependency graph on every release. This notice does not assign a license to first-party GoreeCloud code; owner selection is pending.
+
+The resolved PHP component names, versions and upstream source references are recorded in `composer.lock`. That record is for dependency provenance and does not replace checking each component's applicable license files and notice requirements before distribution.

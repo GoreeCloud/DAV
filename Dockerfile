@@ -1,6 +1,6 @@
 FROM composer:2 AS deps
 WORKDIR /app
-COPY composer.json ./
+COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
 
 FROM php:8.3-apache
