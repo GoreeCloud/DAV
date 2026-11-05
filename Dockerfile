@@ -4,7 +4,11 @@ COPY composer.json ./
 RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
 
 FROM php:8.3-apache
-RUN docker-php-ext-install pdo_sqlite && a2enmod rewrite headers \
+# pdo_sqlite requires the SQLite development headers and pkg-config metadata.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-install pdo_sqlite && a2enmod rewrite headers \
     && mkdir -p /var/lib/goreecloud-dav \
     && chown www-data:www-data /var/lib/goreecloud-dav \
     && chmod 0700 /var/lib/goreecloud-dav
