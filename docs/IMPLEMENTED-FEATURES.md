@@ -1,7 +1,20 @@
-# Implemented features — source vs runtime
+# GoreeCloud DAV — implemented and verified features
 
-**Source-implemented and locally syntax-reviewed (2026-11-04):** HTTP DAV bootstrap, basic-credential parsing and username validation, account database and CLI scaffolding, SabreDAV CalDAV/CardDAV/WebDAV composition, per-user file root wiring, default collection provisioning logic, HTTPS/trusted proxy guard, container/example CI and documentation.
+**Evidence: GitHub Actions on the `feat/goreecloud-dav-foundation-20261105` review branch (November 2026). The review branch is not merged or deployed.**
 
-**Locally verified:** PHP 8.4 syntax of all authored PHP files; dependency-free credential/configuration security unit tests.
+## Verified in automated tests
 
-**Not verified functional:** Composer install; full runtime, SQLite migration, actual authenticated DAV operations, container boot, client interoperability, backup and production deployment. These are not yet classified as delivered functionality.
+- Composer dependency resolution and vulnerability-advisory audit; PHP source syntax; credential and configuration security unit tests.
+- SQLite account-registry initialization and local CLI lifecycle: account creation, status/listing, password rotation, disable, and re-enable.
+- HTTP authenticated DAV root, default CalDAV calendar, and default CardDAV address book discovery through PROPFIND.
+- WebDAV file PUT/GET with per-user file separation: another user's access to the file returns 404.
+- Cross-account calendar and address-book collection access returns 403 or 404 when the authenticated account is not the owner.
+- No default account creation and no production deployments in this workstream.
+
+## Present in code; additional validation required
+
+- Broader CalDAV recurrence, invitation/scheduling interoperability and tasks; CardDAV vCard compatibility with diverse clients; WebDAV locking and sync conformance.
+- Docker container boot and TLS reverse proxy connectivity, production backup/restore, upgrades/migrations, observability, and quotas.
+- Stable release, production deployment and supported-client matrix.
+
+Do not conflate a green narrow CI suite with a production-ready service.

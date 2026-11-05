@@ -41,7 +41,7 @@ Do not log stdin, passwords or bearer Authorization values. Disabling stops new 
 
 ## Backup and recovery
 
-Back up (1) a **consistent SQLite snapshot** of `dav.sqlite` using SQLite's backup API or `VACUUM INTO`, including metadata and locks, and (2) the entire corresponding `files/` subtree while writes are stopped or via application-consistent snapshots. Never copy only the live `.sqlite` file while WAL updates are pending and assume the backup is consistent. Encrypt off-host backups, restrict access, verify integrity, and practice restoration to an isolated service before approving retention automation. Keep file/DB snapshots coordinated.
+Back up (1) a **consistent SQLite snapshot** of the global credential registry `dav.sqlite`, (2) all per-account calendar/contact/principal/lock databases at `metadata/<username>/dav.sqlite`, and (3) the corresponding `files/` subtrees while writes are stopped or via application-consistent snapshots. Never copy only the live `.sqlite` file while WAL updates are pending and assume the backup is consistent. Encrypt off-host backups, restrict access, verify integrity, and practice restoration to an isolated service before approving retention automation. Keep file/DB snapshots coordinated.
 
 On restore, stop writes, snapshot the current state for rollback, restore coordinated metadata and files to a separate directory, validate permissions and run end-to-end DAV tests on private URLs. Do not overwrite live data without explicit authorization and a rollback plan.
 

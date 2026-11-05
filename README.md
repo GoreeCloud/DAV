@@ -6,10 +6,10 @@
 
 - CalDAV calendar, event, recurrence and task protocol processing supplied by SabreDAV's CalDAV stack; CardDAV contacts and address books supplied by its CardDAV stack.
 - WebDAV file handling under a per-authenticated-account `/files/` root; DAV locks; standard conditional requests and sync support provided by the framework.
-- Single SQLite-backed metadata database, a local administrator CLI, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
+- Isolated per-account SQLite calendar/contact metadata, separate SQLite credential registry, a local administrator CLI, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
 - Container build, loopback-only example Compose configuration, health probe, CI checks (including an HTTP smoke suite), and integration/operations/security docs.
 
-**Not yet verified:** actual protocol compatibility across clients, end-to-end provisioning, container startup, database migration safety, backup/restore, performance, and production hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
+**Validated on GitHub Actions:** Composer dependency resolution/audit, PHP syntax, security unit tests, SQLite CLI provisioning, authenticated HTTP PROPFIND, WebDAV PUT/GET, and denial of cross-account calendar/contact/file access. **Not yet verified:** production TLS/container startup, independent client interoperability, upgrade migrations, backup/restore, performance, and operational hardening. Code presence is not evidence of a stable service. This is not an SSO, file-sharing, public hosting or collaboration product yet.
 
 ## Quick start (local isolated test only)
 
@@ -59,4 +59,4 @@ This repo is public; **never commit real contact records, calendar data, passwor
 
 ## Dependency provenance
 
-Protocol engine: `sabre/dav` v4.6 series, BSD-3-Clause licensed upstream; upstream examples are consumed at setup time, and their seeded demo accounts are intentionally ignored. Review upstream licensing, advisories, and transitive dependencies before releases. The application code and docs are GoreeCloud-maintained. License choice for the GoreeCloud-owned code is pending the founder's explicit open-source licensing decision; public source visibility does not itself grant redistribution rights.
+Protocol engine: `sabre/dav` v4.6 series, BSD-3-Clause licensed upstream; a pinned, attributed SQLite schema derived from upstream examples is included in `resources/sql/`, with no demo accounts. Review upstream licensing, advisories, and transitive dependencies before releases. The application code and docs are GoreeCloud-maintained. License choice for the GoreeCloud-owned code is pending the founder's explicit open-source licensing decision; public source visibility does not itself grant redistribution rights.

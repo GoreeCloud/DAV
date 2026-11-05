@@ -38,6 +38,40 @@ expect "$(status -u 'alice:alice-test-password-12345' -X PROPFIND -H 'Depth: 0' 
 expect "$(status -u 'alice:alice-test-password-12345' -X PROPFIND -H 'Depth: 0' "$base/calendars/alice/default/")" 207 'CalDAV default calendar'
 expect "$(status -u 'alice:alice-test-password-12345' -X PROPFIND -H 'Depth: 0' "$base/addressbooks/alice/default/")" 207 'CardDAV default address book'
 
+# Exercise actual interoperable iCalendar and vCard resource writes, not just collection metadata.
+cat >"$work/event.ics" <<'ICS'
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GoreeCloud DAV Integration Test//EN
+BEGIN:VEVENT
+UID:smoke-event-001@example.invalid
+DTSTAMP:20261105T000000Z
+DTSTART:20261105T120000Z
+DTEND:20261105T130000Z
+SUMMARY:Example Calendar Event
+END:VEVENT
+END:VCALENDAR
+ICS
+calendar_url="$base/calendars/alice/default/test.ics"
+calendar_code="$(status -u 'alice:alice-test-password-12345' -X PUT -H 'Content-Type: text/calendar; charset=utf-8' --data-binary @"$work/event.ics" "$calendar_url")"
+if [[ "$calendar_code" != 201 && "$calendar_code" != 204 ]]; then expect "$calendar_code" 201 'CalDAV event PUT'; fi
+expect "$(status -u 'alice:alice-test-password-12345' "$calendar_url")" 200 'CalDAV event GET'
+grep -q 'SUMMARY:Example Calendar Event' "$work/response"
+
+cat >"$work/contact.vcf" <<'VCF'
+BEGIN:VCARD
+VERSION:3.0
+FN:Example Contact
+N:Contact;Example;;;
+UID:urn:uuid:11111111-1111-4111-8111-111111111111
+END:VCARD
+VCF
+contact_url="$base/addressbooks/alice/default/test.vcf"
+contact_code="$(status -u 'alice:alice-test-password-12345' -X PUT -H 'Content-Type: text/vcard; charset=utf-8' --data-binary @"$work/contact.vcf" "$contact_url")"
+if [[ "$contact_code" != 201 && "$contact_code" != 204 ]]; then expect "$contact_code" 201 'CardDAV contact PUT'; fi
+expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'CardDAV contact GET'
+grep -q 'FN:Example Contact' "$work/response"
+
 # Accounts get distinct physical WebDAV roots despite the same /files URL.
 printf 'confidential-test-content' >"$work/payload.txt"
 file_url="$base/files/account-separation.txt"
