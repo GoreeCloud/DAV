@@ -59,3 +59,13 @@ jobs:
         run: docker compose config --quiet
       - name: Build and exercise isolated Apache/PHP container
         run: bash tests/DockerSmokeTest.sh
+
+  tls-gateway-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified upstream v4 SHA
+      - name: Validate HTTPS gateway test shell
+        run: bash -n tests/TlsGatewaySmokeTest.sh
+      - name: Verify disposable TLS proxy and gateway IP throttling
+        run: bash tests/TlsGatewaySmokeTest.sh
