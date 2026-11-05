@@ -72,7 +72,12 @@ docker run --detach --name "$proxy" --network "$network" \
 published="$(docker port "$proxy" 443/tcp)"
 [[ "$published" == "127.0.0.1:${port}" ]] || { echo "TLS listener not loopback-only: $published" >&2; exit 1; }
 proxy_ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$proxy")"
-[[ -n "$proxy_ip" ]] || { echo 'Could not establish exact proxy IP' >&2; exit 1; }
+if [[ -z "$proxy_ip" ]]; then
+  echo 'Gateway did not join the Docker network; inspecting startup failure' >&2
+  docker inspect --format 'Nginx status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "$proxy" >&2 || true
+  docker logs --tail 60 "$proxy" >&2 || true
+  exit 1
+fi
 
 # Restart the backend with ONLY the actual proxy IP authorized to assert TLS.
 docker rm -f "$backend" >/dev/null
