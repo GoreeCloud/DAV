@@ -24,6 +24,7 @@
   "scripts": {
     "test:unit": [
       "@php tests/SecurityTest.php",
+      "@php tests/RequestLimitTest.php",
       "@php tests/BackupTest.php",
       "@php tests/BackupDestinationTest.php",
       "@php tests/FilesystemGuardTest.php",

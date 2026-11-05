@@ -55,6 +55,11 @@ printf 'disposable-test-password-12345\n' | docker exec --interactive --user www
 
 docker exec --user www-data "$container" php /var/www/html/bin/dav status --json | grep -q '"accounts":1'
 
+# Confirm Apache enforces the same hard byte ceiling as the PHP early check.
+# The Apache limit must also handle chunked uploads with no declared length.
+docker exec "$container" grep -Fq 'LimitRequestBody 67108864' /etc/apache2/conf-enabled/goreecloud-dav.conf
+docker exec "$container" grep -Fq 'RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500' /etc/apache2/conf-enabled/goreecloud-dav.conf
+
 # The container is deliberately not configured with a trusted proxy. A client
 # claiming X-Forwarded-Proto:https must NOT bypass plaintext HTTP rejection.
 for request in direct spoofed; do
@@ -109,6 +114,25 @@ code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 1
   --user 'alice:disposable-test-password-12345' --request PROPFIND -H 'Depth: 0' \
   -H 'X-Forwarded-Proto: https' "$base/calendars/alice/default/")"
 [[ "$code" == 207 ]] || { echo "Trusted-proxy CalDAV PROPFIND failed: $code" >&2; exit 1; }
+
+# The 64 MiB limit is intentionally nonconfigurable until an approved
+# per-service quota policy exists. A disposable sparse test payload avoids
+# keeping large test fixtures in source control.
+large_payload="$(mktemp)"
+truncate -s 67108865 "$large_payload"
+large_code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 60 \
+  --user 'alice:disposable-test-password-12345' --request PUT \
+  -H 'X-Forwarded-Proto: https' -H 'Expect:' \
+  --data-binary @"$large_payload" "$base/files/too-large.bin" || true)"
+rm -f "$large_payload"
+if [[ "$large_code" != 413 ]]; then
+  echo "Oversize WebDAV payload must be rejected with 413 (got $large_code)" >&2
+  exit 1
+fi
+file_code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 \
+  --user 'alice:disposable-test-password-12345' \
+  -H 'X-Forwarded-Proto: https' "$base/files/too-large.bin")"
+[[ "$file_code" == 404 ]] || { echo "Oversized PUT unexpectedly created a DAV file: $file_code" >&2; exit 1; }
 
 # Exercise the operator backup against the actual PHP PDO_SQLITE runtime in
 # the disposable container; the snapshot stays in the ephemeral /tmp tmpfs.

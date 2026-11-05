@@ -4,7 +4,7 @@
 
 This repository does **not** deploy the service or configure DNS. Proposed service identity: `dav.goreecloud.com` and isolated development identity `dav-dev.goreecloud.com`, subject to verified uniqueness, existing GoreeCloud DNS inventory, appropriate authorization and private-vs-public network policy. Do not assume either resolves.
 
-Run behind Caddy or GoreeCloud Gateway with valid HTTPS, rate limits, `X-Forwarded-Proto` sanitization, request body-size limits and appropriate VPN boundary. The example `compose.yaml` publishes only `127.0.0.1:8787` and requires an allowlisted direct proxy address. A different network topology will require a verified port/route configuration. Avoid CDN/proxy transformations that drop custom DAV methods, WebDAV lock headers or `Authorization`.
+Run behind Caddy or GoreeCloud Gateway with valid HTTPS, rate limits, `X-Forwarded-Proto` sanitization, request body-size limits and appropriate VPN boundary. The supplied Apache Docker image enforces `LimitRequestBody 67108864` (64 MiB) and `RequestReadTimeout` for slow headers/body reads. The PHP front controller rejects declared `Content-Length` values exceeding this bound before authentication; Apache separately enforces the actual streamed size for chunked uploads. The cap is deliberately fixed in this experimental build—larger file uploads are not yet supported, and an upstream proxy should enforce the same or a smaller limit. This is **not** an account quota or a request-rate/brute-force control. The example `compose.yaml` publishes only `127.0.0.1:8787` and requires an allowlisted direct proxy address. A different network topology will require a verified port/route configuration. Avoid CDN/proxy transformations that drop custom DAV methods, WebDAV lock headers or `Authorization`.
 
 ## Build / data initialization
 
@@ -68,7 +68,7 @@ Python 3 and PHP CLI only; it does **not** execute the PHP PDO implementation,
 SabreDAV, Docker, or a production backup/restore and must not be represented as
 those release gates passing.
 
-Restore rehearsals should copy the snapshot to a *disposable new* data directory, preserve owner/mode, then run `php bin/dav status --json`, SQLite integrity checks, and authenticated DAV smoke tests on a private test listener. Never restore over live files in place. An authored (not remotely executed) CI test stages restoration at CLI level; a complete production restore with representative client data and recovery point objectives is still outstanding.
+Restore rehearsals should copy the snapshot to a *disposable new* data directory, preserve owner/mode, then run `php bin/dav status --json`, SQLite integrity checks, and authenticated DAV smoke tests on a private test listener. Never restore over live files in place. An isolated CI test stages restoration at CLI level; it has passed in disposable runners; a complete production restore with representative client data and recovery point objectives is still outstanding.
 
 ## Updating
 
@@ -76,11 +76,11 @@ Review SabreDAV changelog/schema and dependency advisories; pin and review `comp
 
 ## Filesystem storage precautions
 
-The WebDAV adapter rejects pre-existing symlinks and traversal inside personal file trees, including nested resources, but local writers with permission to mutate the volume may still race application-level checks. Keep account directories writable only by the service account, do not mount shared/untrusted folders into `DAV_DATA_DIR/files`, and reject archives that restore symlinks. Verify imported data with an offline tree scan, perform an isolated client regression for nested MKCOL/MOVE/PROPFIND/LOCK/COPY, and run `backup:verify` on a separately protected snapshot. The current guard has not yet been exercised in the remote CI suite.
+The WebDAV adapter rejects pre-existing symlinks and traversal inside personal file trees, including nested resources, but local writers with permission to mutate the volume may still race application-level checks. Keep account directories writable only by the service account, do not mount shared/untrusted folders into `DAV_DATA_DIR/files`, and reject archives that restore symlinks. Verify imported data with an offline tree scan, perform an isolated client regression for nested MKCOL/MOVE/PROPFIND/LOCK/COPY, and run `backup:verify` on a separately protected snapshot. The current guard passed the disposable GitHub Actions integration suite on the previous review commit; independent real-client testing remains outstanding.
 
 ### Root paths and provisioning rollback
 
-Use direct, non-symlinked absolute host paths for `DAV_DATA_DIR`, `DAV_DATA_DIR/files`, and each account directory. Mount an ordinary private volume rather than adding symlinked ancestors, including before the data directory is created. A linked ancestor intentionally causes an error rather than following the link. For a failed `user:add`, the operator should inspect logs before retrying; the rollback cleanup is limited to the newly created account SQLite files (`dav.sqlite`, `dav.sqlite-wal`, `dav.sqlite-shm`) and its empty directories. If account directories remain nonempty, preserve them for authorized review rather than deleting data. The corrected rollback has local unit coverage, not remote integration coverage.
+Use direct, non-symlinked absolute host paths for `DAV_DATA_DIR`, `DAV_DATA_DIR/files`, and each account directory. Mount an ordinary private volume rather than adding symlinked ancestors, including before the data directory is created. A linked ancestor intentionally causes an error rather than following the link. For a failed `user:add`, the operator should inspect logs before retrying; the rollback cleanup is limited to the newly created account SQLite files (`dav.sqlite`, `dav.sqlite-wal`, `dav.sqlite-shm`) and its empty directories. If account directories remain nonempty, preserve them for authorized review rather than deleting data. The corrected rollback has passed CI unit coverage; independent administrative failure/recovery scenarios remain pending.
 
 ## WebDAV file ETag correctness and cost
 

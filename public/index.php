@@ -19,6 +19,12 @@ try {
     $uri = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
     $uri = is_string($uri) ? $uri : '/';
     $base = Config::baseUri();
+    if (Config::requestBodyTooLarge($_SERVER)) {
+        http_response_code(413);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'DAV request body exceeds 64 MiB limit.';
+        exit;
+    }
     if ($uri === '/healthz' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
         header('Content-Type: application/json');
         echo json_encode(['service' => 'goreecloud-dav', 'status' => 'up'], JSON_THROW_ON_ERROR);

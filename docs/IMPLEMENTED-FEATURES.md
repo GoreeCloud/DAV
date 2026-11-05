@@ -1,37 +1,31 @@
 # GoreeCloud DAV — implemented and verified features
 
-**Evidence: GitHub Actions on the `feat/goreecloud-dav-foundation-20261105` review branch (November 2026). The review branch is not merged or deployed.**
+**Status:** experimental review branch; no production release or deployment. Claims below reference GitHub Actions on commit `4730bbadfb1877f1f66cda5963dcdd4ab53b1643` on November 5, 2026, not production usage.
 
-## Verified in automated tests
+## CI-verified on the published review branch
 
-- Composer dependency resolution and vulnerability-advisory audit; PHP source syntax; credential and configuration security unit tests.
-- SQLite account-registry initialization and local CLI lifecycle: account creation, status/listing, password rotation, disable, and re-enable.
-- HTTP authenticated DAV root, default CalDAV calendar, and default CardDAV address book discovery through PROPFIND.
-- CalDAV iCalendar event PUT/GET and CardDAV vCard contact PUT/GET using test resources.
-- WebDAV file PUT/GET with per-user file separation: another user's access to the file returns 404.
-- Cross-account calendar and address-book collection access returns 403 or 404 when the authenticated account is not the owner.
-- No default account creation and no production deployments in this workstream.
+- Composer dependency resolution and advisory audit; PHP syntax and standalone security/backup/filesystem path tests.
+- SQLite account registry and per-account DAV databases; CLI account provisioning, password rotation, disable and re-enable.
+- Authenticated HTTP CalDAV events, CardDAV contacts, default calendar/address-book discovery and synchronization REPORT.
+- Account-isolated WebDAV file CRUD, nested MKCOL/MOVE/COPY, exclusive LOCK/UNLOCK, conditional ETags with strong content SHA-256 validators, and denial of symlinked resources.
+- Isolation of users' calendars, contacts and files; unauthenticated access and disabled accounts rejected.
+- Disposable Docker/Apache build and startup, no seeded users, locally simulated trusted proxy, refusal of plaintext/spoofed TLS requests, and PHP PDO SQLite `backup:create`/`backup:verify`.
+- Pinned SQLite schemas, WAL-mode SQLite snapshot/restore rehearsal, checksummed file and empty-directory inventory, and integrity checks on recovered disposable data.
 
-## Present in local changes; remote CI validation pending
+The tests are CI smoke/regression checks. They do not verify every DAV client, attack model, upgrade path, or production network configuration.
 
-- Cooperative shared/exclusive locking between HTTP and CLI, an operator-only SQLite `VACUUM INTO`/file snapshot utility with integrity manifest, and guarded nested WebDAV nodes and SQLite metadata paths rejecting symlink/path traversal. Local PHP syntax, existing security unit tests, and new backup integrity and filesystem and SQLite storage-path guard unit tests pass. Expanded HTTP/TLS/sync/delete/MKCOL/MOVE/symlink-denial and snapshot/restore CI tests are authored but have not run on GitHub Actions.
+## Implemented locally in the new review change (pending its own CI)
 
-## Present in repository; additional validation required
+- Fixed **64 MiB** Apache request-body limit, including chunked transfers, and slow header/body read timeouts.
+- Early PHP rejection of oversized or malformed declared `Content-Length` values.
+- Unit regression for the declared-length boundary and a disposable Docker test asserting oversized WebDAV uploads return HTTP 413 without creating a resource.
 
-- Broader CalDAV recurrence, invitation/scheduling interoperability and tasks; CardDAV vCard compatibility with diverse clients; WebDAV locking and sync conformance.
-- Docker container boot and TLS reverse proxy connectivity, production backup/restore, upgrades/migrations, observability, and quotas.
-- Stable release, production deployment and supported-client matrix.
+## Not yet production-validated or implemented
 
-Do not conflate a green narrow CI suite with a production-ready service.
+- Real TLS reverse-proxy certificate/HSTS and trusted-proxy topology validation; request-rate and authentication-abuse controls.
+- Per-account byte/object quotas, malware inspection, file versioning, public shares, scheduling/delegation and app-specific revocable credentials.
+- Android DAVx5, Apple Calendar/Contacts, Thunderbird, Evolution and other independent client interoperability matrix.
+- Encrypted offsite backup, complete service-level restore/rollback and upgrade/migration rehearsals.
+- Dependency lockfile/reproducible release provenance, sustained load tests, observability and independent security signoff.
 
-- **Local-only latest hardening:** Initial root canonicalization now rejects symlinked ancestors of WebDAV account roots and `DAV_DATA_DIR`; failed account provisioning cleans SQLite files within the account metadata directory. A local reproduction and six standalone unit suites passed, including backup destination symlink rejection. Not yet published or remotely integration-tested.
-
-- Local WebDAV file ETag hardening uses SHA-256 of content, with a regression for same-size, preserved-mtime rewrites. CI HTTP conditional GET behavior remains unverified for this development patch.
-
-## Independent offline recovery test (local verification only)
-
-The development source includes `tests/SqliteRecoveryTest.py`: a disposable
-SQLite WAL snapshot and recovery rehearsal using the actual checked-in schemas,
-PHP manifest verification, restored SQLite integrity and data checks. It is
-not a production backup implementation, a PHP PDO integration run, or a
-substitute for independent encrypted restore and disaster-recovery approval.
+Do not equate a passing build with a stable service or a deployment approval.

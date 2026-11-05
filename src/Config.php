@@ -71,6 +71,30 @@ final class Config
         return false;
     }
 
+    /**
+     * Apache's LimitRequestBody is the authoritative enforcement for streamed
+     * and chunked requests; this is only an early HTTP rejection for clients
+     * that declare a Content-Length. Keep this constant aligned with Dockerfile.
+     */
+    public const MAX_REQUEST_BODY_BYTES = 67108864; // 64 MiB
+
+    public static function requestBodyTooLarge(array $server): bool
+    {
+        if (!array_key_exists('CONTENT_LENGTH', $server) || $server['CONTENT_LENGTH'] === '') {
+            return false;
+        }
+        $length = $server['CONTENT_LENGTH'];
+        // Reject invalid/oversized numeric text without integer overflow.
+        if (!is_string($length) && !is_int($length)) {
+            return true;
+        }
+        $length = (string) $length;
+        if (!preg_match('/^[0-9]{1,20}$/D', $length)) {
+            return true;
+        }
+        return (float) $length > self::MAX_REQUEST_BODY_BYTES;
+    }
+
     public static function httpsRequired(): bool
     {
         return getenv('DAV_REQUIRE_HTTPS') !== '0';
