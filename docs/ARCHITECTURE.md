@@ -40,3 +40,7 @@ Not implemented: OAuth/OIDC or GoreeCloud identity federation; scopes or app-spe
 ## Future integrations
 
 GoreeCloud Calendar and Tasks should target the same CalDAV principal and calendar collections. Contacts should use CardDAV and preserve exact vCard fields. GoreeCloud Files/Sync clients should use ETags/preconditions and WebDAV locks. GoreeCloud Backup should capture metadata plus file contents consistently, not back up database WAL files individually without a SQLite backup procedure. An identity bridge must map verified GoreeCloud account identities to DAV principals without changing stable principal URIs.
+
+## Account isolation (November 2026 hardening)
+
+The global `DAV_DATA_DIR/dav.sqlite` stores authentication data only. Each account's calendar, contact, principal and DAV lock metadata resides in its own `DAV_DATA_DIR/metadata/<username>/dav.sqlite` database. The authenticated user's file tree is `DAV_DATA_DIR/files/<username>` and contains no database files. The server opens only the authenticated user's metadata database. This provides an additional tenant boundary even where protocol-level ACLs might otherwise permit access. Integration tests check that Bob cannot read Alice's resources. There is no cross-user sharing in this initial release. Backups must capture all three storage classes atomically or use consistent snapshots.

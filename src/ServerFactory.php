@@ -19,9 +19,10 @@ final class ServerFactory
         if (!is_dir($directory)) {
             throw new \RuntimeException('Account storage is missing; contact administrator');
         }
-        $principals = new DAVACL\PrincipalBackend\PDO($pdo);
-        $calendars = new CalDAV\Backend\PDO($pdo);
-        $addresses = new CardDAV\Backend\PDO($pdo);
+        $userPdo = Database::userDatabase($username);
+        $principals = new DAVACL\PrincipalBackend\PDO($userPdo);
+        $calendars = new CalDAV\Backend\PDO($userPdo);
+        $addresses = new CardDAV\Backend\PDO($userPdo);
 
         $server = new DAV\Server([
             new CalDAV\Principal\Collection($principals),
@@ -38,7 +39,7 @@ final class ServerFactory
         // Files are private because authenticated requests receive ONLY their own FS root.
         // Never mount an unscoped shared FS tree while this setting is enabled.
         $server->addPlugin($acl);
-        $server->addPlugin(new DAV\Locks\Plugin(new DAV\Locks\Backend\PDO($pdo)));
+        $server->addPlugin(new DAV\Locks\Plugin(new DAV\Locks\Backend\PDO($userPdo)));
         $server->addPlugin(new CalDAV\Plugin());
         $server->addPlugin(new CalDAV\ICSExportPlugin());
         $server->addPlugin(new CardDAV\Plugin());

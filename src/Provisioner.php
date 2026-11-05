@@ -22,32 +22,48 @@ final class Provisioner
         if (strlen($password) < 12 || strlen($password) > 1024) {
             throw new \InvalidArgumentException('Password must contain 12–1024 bytes');
         }
-        $dir = Config::dataDir().'/files/'.$username;
-        if (file_exists($dir)) {
+        $files = Config::dataDir().'/files/'.$username;
+        $metadata = Config::dataDir().'/metadata/'.$username;
+        if (file_exists($files) || file_exists($metadata)) {
             throw new \RuntimeException('Account storage already exists; refusing to reuse it');
         }
-        if (!mkdir($dir, 0700, true)) {
-            throw new \RuntimeException('Could not create account directory');
+        if (!mkdir($files, 0700, true)) {
+            throw new \RuntimeException('Could not create account files directory');
         }
-        $principal = 'principals/'.$username;
-        $this->pdo->beginTransaction();
+
+        $userPdo = null;
         try {
+            $userPdo = Database::createUserDatabase($username);
+            $this->pdo->beginTransaction();
             $stmt = $this->pdo->prepare('INSERT INTO goreecloud_accounts (username,password_hash,created_at) VALUES (?,?,?)');
             $stmt->execute([$username, password_hash($password, PASSWORD_ARGON2ID), time()]);
-            $stmt = $this->pdo->prepare('INSERT INTO principals (uri,displayname) VALUES (?,?)');
+
+            $principal = 'principals/'.$username;
+            $userPdo->beginTransaction();
+            $stmt = $userPdo->prepare('INSERT INTO principals (uri,displayname) VALUES (?,?)');
             $stmt->execute([$principal, $username]);
             $stmt->execute([$principal.'/calendar-proxy-read', $username.' calendar proxy read']);
             $stmt->execute([$principal.'/calendar-proxy-write', $username.' calendar proxy write']);
-            $cal = new CalDAV\Backend\PDO($this->pdo);
+            $cal = new CalDAV\Backend\PDO($userPdo);
             $cal->createCalendar($principal, 'default', ['{DAV:}displayname' => 'Calendar']);
-            $book = new CardDAV\Backend\PDO($this->pdo);
+            $book = new CardDAV\Backend\PDO($userPdo);
             $book->createAddressBook($principal, 'default', ['{DAV:}displayname' => 'Contacts']);
+            $userPdo->commit();
             $this->pdo->commit();
         } catch (\Throwable $e) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
-            @rmdir($dir);
+            if ($userPdo !== null && $userPdo->inTransaction()) {
+                $userPdo->rollBack();
+            }
+            $userPdo = null;
+            // Cleanup only directories created during this failed account addition.
+            foreach (['/dav.sqlite-shm', '/dav.sqlite-wal', '/dav.sqlite'] as $suffix) {
+                @unlink($metadata.$suffix);
+            }
+            @rmdir($metadata);
+            @rmdir($files);
             throw $e;
         }
     }

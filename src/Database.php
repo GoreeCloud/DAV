@@ -8,15 +8,30 @@ use PDO;
 
 final class Database
 {
+    /** Account credential registry. Never expose this database through WebDAV. */
     public static function connect(bool $mustExist = true): PDO
     {
-        $dir = Config::dataDir();
-        $path = $dir.'/dav.sqlite';
-        if ($mustExist && !is_file($path)) {
-            throw new \RuntimeException('Database not initialized. Run: php bin/dav init');
+        return self::sqlite(Config::dataDir().'/dav.sqlite', $mustExist);
+    }
+
+    /** The verified account's own DAV metadata, physically separate from every other account. */
+    public static function userDatabase(string $username): PDO
+    {
+        if (!Credentials::validUsername($username)) {
+            throw new \InvalidArgumentException('Invalid account');
         }
-        if (!is_dir($dir)) {
-            throw new \RuntimeException('Data directory does not exist');
+        return self::sqlite(self::userDbPath($username), true);
+    }
+
+    private static function userDbPath(string $username): string
+    {
+        return Config::dataDir().'/metadata/'.$username.'/dav.sqlite';
+    }
+
+    private static function sqlite(string $path, bool $mustExist): PDO
+    {
+        if (!is_dir(dirname($path)) || ($mustExist && !is_file($path))) {
+            throw new \RuntimeException('DAV database missing; initialize service or account first');
         }
         $pdo = new PDO('sqlite:'.$path, null, null, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -36,20 +51,44 @@ final class Database
             throw new \RuntimeException('Could not create data directory');
         }
         @chmod($dir, 0700);
-        $file = $dir.'/dav.sqlite';
-        if (file_exists($file)) {
-            throw new \RuntimeException('Database already exists; init refuses to overwrite it');
+        self::createDatabase($dir.'/dav.sqlite', dirname(__DIR__).'/resources/sql/002-accounts.sql');
+    }
+
+    /** Creates an isolated metadata database for a newly provisioned user. */
+    public static function createUserDatabase(string $username): PDO
+    {
+        if (!Credentials::validUsername($username)) {
+            throw new \InvalidArgumentException('Invalid account');
         }
-        $pdo = self::connect(false);
-        @chmod($file, 0600);
+        $path = self::userDbPath($username);
+        $dir = dirname($path);
+        if (file_exists($dir)) {
+            throw new \RuntimeException('Account metadata already exists; refusing to reuse it');
+        }
+        if (!mkdir($dir, 0700, true)) {
+            throw new \RuntimeException('Could not create account metadata directory');
+        }
         try {
-            $pdo->beginTransaction();
-            $schemaPath = dirname(__DIR__).'/resources/sql/001-initial.sql';
+            return self::createDatabase($path, dirname(__DIR__).'/resources/sql/001-initial.sql');
+        } catch (\Throwable $e) {
+            @rmdir($dir);
+            throw $e;
+        }
+    }
+
+    private static function createDatabase(string $path, string $schemaPath): PDO
+    {
+        if (file_exists($path)) {
+            throw new \RuntimeException('Database already exists; refusing to overwrite it');
+        }
+        $pdo = self::sqlite($path, false);
+        @chmod($path, 0600);
+        try {
             $sql = @file_get_contents($schemaPath);
             if ($sql === false) {
-                throw new \RuntimeException('Missing GoreeCloud DAV schema');
+                throw new \RuntimeException('Missing pinned GoreeCloud DAV schema');
             }
-            // Source-controlled schema, pinned and reviewed; no bundled vendor examples.
+            $pdo->beginTransaction();
             $sql = preg_replace('/--[^\r\n]*/', '', $sql);
             foreach (explode(';', $sql) as $statement) {
                 $statement = trim($statement);
@@ -57,19 +96,20 @@ final class Database
                     continue;
                 }
                 if (!preg_match('/^CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX)\b/i', $statement)) {
-                    throw new \RuntimeException('Unexpected operation in DAV schema');
+                    throw new \RuntimeException('Unexpected operation in schema');
                 }
                 $pdo->exec($statement);
             }
             $pdo->commit();
+            return $pdo;
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             $pdo = null;
-            @unlink($file);
-            @unlink($file.'-wal');
-            @unlink($file.'-shm');
+            @unlink($path);
+            @unlink($path.'-wal');
+            @unlink($path.'-shm');
             throw $e;
         }
     }

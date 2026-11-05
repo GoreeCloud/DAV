@@ -38,3 +38,7 @@
 7. Document supported client matrix, version pinning, migration approach, operations runbook and release approval.
 
 For security reports, avoid posting credentials or live data in public issues. Contact the GoreeCloud owner using an authorized private channel.
+
+## Hardened tenant data partitioning
+
+Global credentials and tenant DAV objects are stored in separate SQLite databases. Each authenticated request opens only that principal's DAV metadata database and WebDAV file root. No cross-user calendar or address book sharing is supported in this foundation. Preserve permissions on `metadata/` and `files/`, and verify tenant boundaries using CI's integration suite. This is defense in depth; audit future scheduling/sharing plugins before enabling them.

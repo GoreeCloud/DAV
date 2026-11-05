@@ -125,9 +125,3 @@ CREATE TABLE locks (
  uri TEXT
 );
 CREATE INDEX idx_uri ON locks (uri);
-CREATE TABLE goreecloud_accounts (
- username TEXT PRIMARY KEY NOT NULL,
- password_hash TEXT NOT NULL,
- enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
- created_at INTEGER NOT NULL
-);
