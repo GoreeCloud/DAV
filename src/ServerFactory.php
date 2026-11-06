@@ -24,11 +24,12 @@ final class ServerFactory
         $calendars = new CalDAV\Backend\PDO($userPdo);
         $addresses = new CardDAV\Backend\PDO($userPdo);
 
+        $guard = new PrivateFilesystemGuard($directory);
         $server = new DAV\Server([
             new CalDAV\Principal\Collection($principals),
             new CalDAV\CalendarRoot($principals, $calendars),
             new CardDAV\AddressBookRoot($principals, $addresses),
-            new PrivateDirectory($directory),
+            new PrivateDirectory($directory, $guard, FileQuota::forAccount($guard, $username)),
         ]);
         $server->setBaseUri(Config::baseUri());
         $server->debugExceptions = false;

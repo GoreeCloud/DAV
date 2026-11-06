@@ -14,10 +14,12 @@ final class PrivateDirectory extends Directory
 {
     private readonly PrivateFilesystemGuard $guard;
     private readonly bool $mountRoot;
+    private readonly ?FileQuota $quota;
 
-    public function __construct(string $path, ?PrivateFilesystemGuard $guard = null)
+    public function __construct(string $path, ?PrivateFilesystemGuard $guard = null, ?FileQuota $quota = null)
     {
         $this->guard = $guard ?? new PrivateFilesystemGuard($path);
+        $this->quota = $quota;
         $this->guard->assertSafePath($path);
         $this->mountRoot = $path === $this->guard->root();
         parent::__construct($path);
@@ -35,10 +37,10 @@ final class PrivateDirectory extends Directory
             throw new NotFound('WebDAV resource not found');
         }
         if (is_dir($path)) {
-            return new self($path, $this->guard);
+            return new self($path, $this->guard, $this->quota);
         }
         if (is_file($path)) {
-            return new PrivateFile($path, $this->guard);
+            return new PrivateFile($path, $this->guard, $this->quota);
         }
         throw new Forbidden('Unsupported private WebDAV resource');
     }
@@ -69,7 +71,16 @@ final class PrivateDirectory extends Directory
         if (file_exists($path)) {
             throw new Forbidden('Refusing to overwrite an existing WebDAV resource');
         }
+        if ($this->quota !== null) {
+            $this->quota->put($path, $data, false);
+            return null;
+        }
         return parent::createFile($name, $data);
+    }
+
+    public function getQuotaInfo(): array
+    {
+        return $this->quota !== null ? $this->quota->info() : parent::getQuotaInfo();
     }
 
     public function createDirectory($name)

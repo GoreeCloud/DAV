@@ -10,7 +10,7 @@ use Sabre\DAV\FS\File;
 /** Guard reads, writes, deletes and moves of every nested WebDAV file. */
 final class PrivateFile extends File
 {
-    public function __construct(string $path, private readonly PrivateFilesystemGuard $guard)
+    public function __construct(string $path, private readonly PrivateFilesystemGuard $guard, private readonly ?FileQuota $quota = null)
     {
         $this->guard->assertSafePath($path);
         parent::__construct($path);
@@ -19,6 +19,10 @@ final class PrivateFile extends File
     public function put($data)
     {
         $this->guard->assertSafePath($this->path);
+        if ($this->quota !== null) {
+            $this->quota->put($this->path, $data, true);
+            return null;
+        }
         return parent::put($data);
     }
 

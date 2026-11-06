@@ -9,6 +9,7 @@ services:
       DAV_BASE_URI: /
       DAV_REQUIRE_HTTPS: "1"
       DAV_TRUSTED_PROXIES: "${DAV_TRUSTED_PROXIES:-}"
+      DAV_ACCOUNT_FILE_QUOTA_BYTES: "${DAV_ACCOUNT_FILE_QUOTA_BYTES:-}"
     volumes:
       - dav_data:/var/lib/goreecloud-dav
     read_only: true

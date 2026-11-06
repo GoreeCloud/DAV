@@ -30,10 +30,11 @@ jobs:
           php tests/BackupDestinationTest.php
           php tests/FilesystemGuardTest.php
           php tests/FileETagTest.php
+          php tests/FileQuotaTest.php
           php tests/StoragePathTest.php
           php tests/ProvisioningCleanupTest.php
       - name: Shell integration test syntax
-        run: bash -n tests/IntegrationTest.sh tests/DockerSmokeTest.sh
+        run: bash -n tests/IntegrationTest.sh tests/QuotaHttpTest.sh tests/DockerSmokeTest.sh
       - name: Independent SQLite WAL snapshot and staged restore rehearsal
         run: python3 tests/SqliteRecoveryTest.py
       - name: Database/provision smoke
@@ -50,6 +51,8 @@ jobs:
           php bin/dav user:enable alice
       - name: HTTP DAV integration and account isolation
         run: bash tests/IntegrationTest.sh
+      - name: Per-account file quota HTTP 507 and rollback
+        run: bash tests/QuotaHttpTest.sh
 
   container-smoke:
     runs-on: ubuntu-latest
