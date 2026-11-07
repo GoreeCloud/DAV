@@ -1,0 +1,103 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use GoreeCloud\DAV\Credentials;
+use GoreeCloud\DAV\Config;
+use GoreeCloud\DAV\Database;
+use GoreeCloud\DAV\Provisioner;
+use GoreeCloud\DAV\ServiceLock;
+use GoreeCloud\DAV\Backup;
+
+require dirname(__DIR__).'/vendor/autoload.php';
+date_default_timezone_set('UTC');
+
+function help(): void
+{
+    echo <<<'HELP'
+GoreeCloud DAV administrative CLI (local service operator only)
+Usage: php bin/dav <command> [username] [--password-stdin] [--json]
+Commands:
+  init                     Initialize an empty SQLite database; never overwrites
+  status [--json]          Show non-sensitive database health/status
+  user:add NAME --password-stdin
+  user:rotate NAME --password-stdin
+  user:disable NAME
+  user:enable NAME
+  user:list [--json]       Display usernames and enabled status only
+  backup:create /absolute/new-directory [--json]  Coordinated SQLite and files snapshot
+  backup:verify /absolute/directory [--json]     Check snapshot SHA-256 integrity
+  help                     Show this help
+Secrets must be supplied on standard input, not argv or environment variables.
+HELP;
+    echo PHP_EOL;
+}
+
+try {
+    $command = $argv[1] ?? 'help';
+    $name = $argv[2] ?? '';
+    $json = in_array('--json', $argv, true);
+    if (in_array($command, ['help', '--help', '-h'], true)) {
+        help();
+        exit(0);
+    }
+    if ($command === 'init') {
+        Database::initialize();
+        echo "Database initialized (no default accounts).\n";
+        exit(0);
+    }
+    if ($command === 'backup:verify') {
+        $result = Backup::verify($name);
+        echo $json ? json_encode($result, JSON_THROW_ON_ERROR).PHP_EOL : 'Backup verified: '.($result['files']).' files'.PHP_EOL;
+        exit(0);
+    }
+    if ($command === 'backup:create') {
+        $result = Backup::create($name);
+        echo $json ? json_encode($result, JSON_THROW_ON_ERROR).PHP_EOL : 'Backup created and verified: '.($result['files']).' files'.PHP_EOL;
+        exit(0);
+    }
+    $serviceLock = in_array($command, ['status', 'user:list'], true) ? ServiceLock::shared() : ServiceLock::exclusive();
+    $pdo = Database::connect();
+    $users = new Provisioner($pdo);
+    switch ($command) {
+        case 'status':
+            $out = ['status' => 'ok', 'accounts' => count($users->users()), 'data_dir' => Config::dataDir()];
+            echo $json ? json_encode($out, JSON_THROW_ON_ERROR).PHP_EOL : "OK: {$out['accounts']} accounts\n";
+            break;
+        case 'user:list':
+            $out = $users->users();
+            if ($json) {
+                echo json_encode($out, JSON_THROW_ON_ERROR).PHP_EOL;
+            } else {
+                foreach ($out as $u) {
+                    echo $u['username'].' '.($u['enabled'] ? 'enabled' : 'disabled').PHP_EOL;
+                }
+            }
+            break;
+        case 'user:add':
+        case 'user:rotate':
+            if (!Credentials::validUsername($name) || !in_array('--password-stdin', $argv, true)) {
+                throw new InvalidArgumentException('Provide valid username and --password-stdin');
+            }
+            $password = rtrim(stream_get_contents(STDIN), "\r\n");
+            if ($command === 'user:add') {
+                $users->add($name, $password);
+            } else {
+                $users->rotate($name, $password);
+            }
+            echo "Account updated.\n";
+            break;
+        case 'user:disable':
+        case 'user:enable':
+            $users->setEnabled($name, $command === 'user:enable');
+            echo "Account status updated.\n";
+            break;
+        default:
+            help();
+            exit(2);
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Error: '.$e->getMessage().PHP_EOL);
+    exit(1);
+}

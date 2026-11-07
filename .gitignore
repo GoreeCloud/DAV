@@ -1,0 +1,14 @@
+/vendor/
+/var/
+/.env
+/.phpunit.cache/
+composer.phar
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.DS_Store
+
+# Local Python recovery-test cache
+__pycache__/
+*.pyc

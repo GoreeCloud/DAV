@@ -1,0 +1,105 @@
+name: DAV checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 upstream tag as of 2026-11-05
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2 upstream tag as of 2026-11-05
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, xml, dom
+          tools: composer:v2
+      - name: Validate dependency metadata
+        run: test -s composer.lock && composer validate --no-check-publish
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+      - name: Check for vulnerable dependencies
+        run: composer audit
+      - name: PHP syntax
+        run: find src public bin tests -type f \( -name '*.php' -o -name 'dav' \) -exec php -l {} \;
+      - name: Security and backup unit tests
+        run: |
+          php tests/SecurityTest.php
+          php tests/RequestLimitTest.php
+          php tests/BackupTest.php
+          php tests/BackupDestinationTest.php
+          php tests/FilesystemGuardTest.php
+          php tests/FileETagTest.php
+          php tests/FileQuotaTest.php
+          php tests/ServiceLockConcurrencyTest.php
+          php tests/StoragePathTest.php
+          php tests/ProvisioningCleanupTest.php
+      - name: Shell integration test syntax
+        run: |
+          for script in tests/IntegrationTest.sh tests/QuotaHttpTest.sh tests/FullRestoreTest.sh tests/DockerSmokeTest.sh tests/TlsGatewaySmokeTest.sh tests/VdirsyncerInteropTest.sh; do
+            bash -n "$script"
+          done
+      - name: Independent SQLite WAL snapshot and staged restore rehearsal
+        run: python3 tests/SqliteRecoveryTest.py
+      - name: Database/provision smoke
+        run: |
+          export DAV_DATA_DIR="$RUNNER_TEMP/dav-data"
+          php bin/dav init
+          php bin/dav backup:create "$RUNNER_TEMP/dav-empty-snapshot" --json
+          php bin/dav backup:verify "$RUNNER_TEMP/dav-empty-snapshot" --json
+          printf 'test-password-12345\n' | php bin/dav user:add alice --password-stdin
+          php bin/dav status --json
+          php bin/dav user:list --json
+          printf 'changed-password-23456\n' | php bin/dav user:rotate alice --password-stdin
+          php bin/dav user:disable alice
+          php bin/dav user:enable alice
+      - name: HTTP DAV integration and account isolation
+        run: bash tests/IntegrationTest.sh
+      - name: Per-account file quota HTTP 507 and rollback
+        run: bash tests/QuotaHttpTest.sh
+      - name: Independent whole-service backup and recovery rehearsal
+        run: bash tests/FullRestoreTest.sh
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 upstream tag as of 2026-11-05
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Build and exercise isolated Apache/PHP container
+        run: bash tests/DockerSmokeTest.sh
+
+  tls-gateway-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified upstream v4 SHA
+      - name: Validate HTTPS gateway test shell
+        run: bash -n tests/TlsGatewaySmokeTest.sh
+      - name: Verify disposable TLS proxy and gateway IP throttling
+        run: bash tests/TlsGatewaySmokeTest.sh
+
+  independent-client-interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified upstream v4 SHA
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # verified upstream v2 SHA
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, xml, dom
+          tools: composer:v2
+      - name: Install locked PHP DAV dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+      - name: Verify pinned vdirsyncer wheel and install into ephemeral venv
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dav-vdirsyncer-venv"
+          mkdir -p "$RUNNER_TEMP/dav-vdirsyncer-wheel"
+          "$RUNNER_TEMP/dav-vdirsyncer-venv/bin/python" -m pip download --disable-pip-version-check --no-deps --only-binary=:all: --dest "$RUNNER_TEMP/dav-vdirsyncer-wheel" 'vdirsyncer==0.21.0'
+          echo "0f7320b0872c7ed804d146454107247f19f9e832815492aeb64fa8d2d09f4b6e  $RUNNER_TEMP/dav-vdirsyncer-wheel/vdirsyncer-0.21.0-py3-none-any.whl" | sha256sum --check
+          "$RUNNER_TEMP/dav-vdirsyncer-venv/bin/python" -m pip install --disable-pip-version-check --no-input "$RUNNER_TEMP/dav-vdirsyncer-wheel/vdirsyncer-0.21.0-py3-none-any.whl"
+          "$RUNNER_TEMP/dav-vdirsyncer-venv/bin/vdirsyncer" --version
+      - name: Independent CalDAV/CardDAV client round-trip
+        run: |
+          export DAV_VDIRSYNCER_BIN="$RUNNER_TEMP/dav-vdirsyncer-venv/bin/vdirsyncer"
+          bash tests/VdirsyncerInteropTest.sh
