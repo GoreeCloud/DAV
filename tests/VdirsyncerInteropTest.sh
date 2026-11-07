@@ -352,4 +352,83 @@ with sqlite3.connect(Path(sys.argv[1])/'metadata'/'bob'/'dav.sqlite') as db:
     assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 0
 PY
 
-printf 'Independent client passed DAV discovery, events, two-way VTODO edits, recurrence, contacts and account isolation.\n'
+# A recurrence exception must retain its timezone, excluded date and overridden instance
+# when an independent client downloads and subsequently edits the event.
+cat > "$work/advanced-recurrence.ics" <<'ADVANCEDICS'
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GoreeCloud DAV Advanced Recurrence CI//EN
+BEGIN:VTIMEZONE
+TZID:America/New_York
+BEGIN:STANDARD
+DTSTART:19701101T020000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700308T020000
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:vdir-exception-001@example.invalid
+DTSTAMP:20261107T120000Z
+DTSTART;TZID=America/New_York:20261108T090000
+DTEND;TZID=America/New_York:20261108T100000
+RRULE:FREQ=WEEKLY;COUNT=4
+EXDATE;TZID=America/New_York:20261115T090000
+SUMMARY:Independent Client Exception Series
+END:VEVENT
+BEGIN:VEVENT
+UID:vdir-exception-001@example.invalid
+DTSTAMP:20261107T120000Z
+RECURRENCE-ID;TZID=America/New_York:20261122T090000
+DTSTART;TZID=America/New_York:20261122T110000
+DTEND;TZID=America/New_York:20261122T120000
+SUMMARY:Independent Client Moved Occurrence
+END:VEVENT
+END:VCALENDAR
+ADVANCEDICS
+advanced_code="$(curl --silent --show-error --max-time 12 --output "$work/advanced-response" --write-out '%{http_code}' \
+  --user 'alice:alice-vdirsyncer-test-password-12345' --request PUT \
+  -H 'Content-Type: text/calendar; charset=utf-8' --data-binary @"$work/advanced-recurrence.ics" \
+  "$base/calendars/alice/default/vdir-advanced.ics")"
+if [[ "$advanced_code" != 201 && "$advanced_code" != 204 ]]; then
+  echo "Advanced recurrence PUT was rejected: HTTP $advanced_code" >&2
+  exit 1
+fi
+"$DAV_VDIRSYNCER_BIN" sync discovered_calendar_pair
+advanced_local="$(grep -RlF 'UID:vdir-exception-001@example.invalid' "$work/discovered-calendars" | head -n 1)"
+[[ -n "$advanced_local" && -f "$advanced_local" ]] || { echo 'Independent client did not download recurring exception resource' >&2; exit 1; }
+for marker in 'BEGIN:VTIMEZONE' 'TZID:America/New_York' 'RRULE:FREQ=WEEKLY;COUNT=4' \
+              'EXDATE;TZID=America/New_York:20261115T090000' \
+              'RECURRENCE-ID;TZID=America/New_York:20261122T090000' \
+              'DTSTART;TZID=America/New_York:20261122T110000'; do
+  grep -Fq "$marker" "$advanced_local" || { echo "Independent client lost recurrence property: $marker" >&2; exit 1; }
+done
+# A local update to the master event must not remove the exception or timezone.
+sed -i 's/SUMMARY:Independent Client Exception Series/SUMMARY:Independent Client Series Edited Locally/' "$advanced_local"
+"$DAV_VDIRSYNCER_BIN" sync discovered_calendar_pair
+python3 - "$DAV_DATA_DIR" <<'PY'
+from pathlib import Path
+import sqlite3, sys
+root = Path(sys.argv[1])
+with sqlite3.connect(root/'metadata'/'alice'/'dav.sqlite') as db:
+    rows = db.execute('SELECT uri, calendardata FROM calendarobjects').fetchall()
+    assert len(rows) == 4, (len(rows), [r[0] for r in rows])
+    found = [(u, payload.encode('utf-8') if isinstance(payload, str) else bytes(payload)) for u, payload in rows if u == 'vdir-advanced.ics']
+    assert len(found) == 1, found
+    body = found[0][1]
+    for marker in [b'SUMMARY:Independent Client Series Edited Locally', b'BEGIN:VTIMEZONE',
+                   b'RRULE:FREQ=WEEKLY;COUNT=4', b'EXDATE;TZID=America/New_York:20261115T090000',
+                   b'RECURRENCE-ID;TZID=America/New_York:20261122T090000',
+                   b'DTSTART;TZID=America/New_York:20261122T110000']:
+        assert marker in body, f'Lost recurrence byte sequence: {marker!r}'
+with sqlite3.connect(root/'metadata'/'bob'/'dav.sqlite') as db:
+    assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 0
+PY
+
+printf 'Independent client passed DAV discovery, two-way task edits, timezone recurrence exceptions and contacts.\n'
