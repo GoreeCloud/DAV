@@ -1,9 +1,9 @@
-FROM composer:2 AS deps
+FROM composer:2@sha256:8de2184c6de224f4689e8f80ed5f5edaf0030b6b8b7839a22a2bcb6722ac87d0 AS deps
 WORKDIR /app
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
 
-FROM php:8.3-apache
+FROM php:8.3.36-apache-bookworm@sha256:a14446c32a3c8aeb9b4dac7fb73b03dfd8006e670d9b43ea7947e4030d3cbae6
 # pdo_sqlite requires the SQLite development headers and pkg-config metadata.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsqlite3-dev \

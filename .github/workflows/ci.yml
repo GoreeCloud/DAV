@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 upstream tag as of 2026-11-05
       - name: Validate Compose configuration
         run: docker compose config --quiet
-      - name: Record official Docker base manifest digests for reproducible pinning
+      - name: Record current upstream Docker digests for future manual upgrades
         timeout-minutes: 5
         run: |
           for ref in docker.io/library/composer:2 docker.io/library/php:8.3.36-apache-bookworm; do
