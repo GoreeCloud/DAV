@@ -104,6 +104,9 @@ auth = "basic"
 CONFIG
 chmod 0600 "$work/vdirsyncer.conf"
 export VDIRSYNCER_CONFIG="$work/vdirsyncer.conf"
+# vdirsyncer 0.21 creates its local pair state through discover, even when
+# both storages are already mapped to specific, existing collections.
+"$DAV_VDIRSYNCER_BIN" discover calendar_pair contact_pair
 
 # The independent client uploads real iCalendar/vCard data through its own
 # CalDAV/CardDAV implementation, not SabreDAV's test transport.
