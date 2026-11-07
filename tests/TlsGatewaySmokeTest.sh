@@ -110,6 +110,12 @@ grep -iq '^Strict-Transport-Security: max-age=3600' "$workdir/headers" || {
   echo 'HSTS missing from TLS response' >&2; exit 1;
 }
 
+# HTTPS discovery remains usable through the authenticated gateway.
+for collection in caldav carddav; do
+  code="$(curl_tls --output /dev/null --write-out '%{http_code}' "$url/.well-known/$collection")"
+  [[ "$code" == 308 ]] || { echo "TLS discovery for $collection failed: $code" >&2; exit 1; }
+done
+
 # The proxy must overwrite an attacker-controlled X-Forwarded-Proto header.
 # Both values still permit access because TLS really terminated at nginx.
 for forged in https http; do

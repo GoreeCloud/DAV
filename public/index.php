@@ -30,14 +30,16 @@ try {
         echo json_encode(['service' => 'goreecloud-dav', 'status' => 'up'], JSON_THROW_ON_ERROR);
         exit;
     }
-    if ($uri === '/.well-known/caldav' || $uri === '/.well-known/carddav') {
-        header('Location: '.$base, true, 308);
-        exit;
-    }
+    // Discovery must obey the same transport policy as all DAV operations.
+    // Keep only the local GET health probe outside this TLS gate.
     if (Config::httpsRequired() && !Config::isSecure($_SERVER)) {
         http_response_code(403);
         header('Content-Type: text/plain; charset=utf-8');
         echo 'TLS is required for DAV access.';
+        exit;
+    }
+    if ($uri === '/.well-known/caldav' || $uri === '/.well-known/carddav') {
+        header('Location: '.$base, true, 308);
         exit;
     }
     // A shared lock lasts for the entire DAV request, including streamed writes.

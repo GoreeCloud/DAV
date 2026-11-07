@@ -32,6 +32,8 @@ expect() {
   fi
 }
 expect "$(status "$base/healthz")" 200 'health probe'
+expect "$(status "$base/.well-known/caldav")" 308 'local HTTP development CalDAV discovery when TLS disabled'
+expect "$(status "$base/.well-known/carddav")" 308 'local HTTP development CardDAV discovery when TLS disabled'
 expect "$(status -X PROPFIND -H 'Depth: 0' "$base/")" 401 'anonymous DAV access'
 expect "$(status -u 'alice:wrong-password' -X PROPFIND -H 'Depth: 0' "$base/")" 401 'wrong password'
 expect "$(status -u 'alice:alice-test-password-12345' -X PROPFIND -H 'Depth: 0' "$base/")" 207 'authenticated DAV root'
@@ -246,6 +248,10 @@ for _ in {1..30}; do
 done
 expect "$(status -u 'alice:alice-test-password-12345' -H 'X-Forwarded-Proto: https' -X PROPFIND -H 'Depth: 0' "$base/")" 403 'spoofed forwarded TLS'
 expect "$(status -u 'alice:alice-test-password-12345' -X PROPFIND -H 'Depth: 0' "$base/")" 403 'plain HTTP rejected'
+expect "$(status "$base/.well-known/caldav")" 403 'CalDAV discovery requires TLS'
+expect "$(status "$base/.well-known/carddav")" 403 'CardDAV discovery requires TLS'
+expect "$(status -H 'X-Forwarded-Proto: https' "$base/.well-known/caldav")" 403 'forged CalDAV discovery TLS denied'
+expect "$(status -H 'X-Forwarded-Proto: https' "$base/.well-known/carddav")" 403 'forged CardDAV discovery TLS denied'
 kill "$server_pid"; wait "$server_pid" 2>/dev/null || true; server_pid=''
 
 # Snapshot metadata uses SQLite VACUUM INTO, not unsafe copying of live -wal files.
