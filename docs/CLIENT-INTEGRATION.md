@@ -33,6 +33,12 @@ The client synced a synthetic iCalendar event and vCard 3.0 contact from local f
 
 **VTODO and basic recurrence check:** [CI #42399558368](https://github.com/GoreeCloud/DAV/actions/runs/42399558368) additionally passed vdirsyncer downloads of a synthetic VTODO item and an event with `RRULE:FREQ=WEEKLY;COUNT=3`. This preserves those simple structures; exception dates, recurring overrides, VTIMEZONE edge cases, alarms and full two-way VTODO workflows remain untested.
 
+**Two-way VTODO synchronization:** [CI #42400836993](https://github.com/GoreeCloud/DAV/actions/runs/42400836993) passed all four jobs. The independent client uploaded a task status/summary change, then downloaded a separate remote completion and summary change; the test checked unchanged object count and Bob's empty calendar. This is synthetic task round-trip evidence, not compatibility with a particular tasks app.
+
+**Named-timezone recurrence with exceptions:** [CI #42401058201](https://github.com/GoreeCloud/DAV/actions/runs/42401058201) passed all four jobs. A test event included `America/New_York` `VTIMEZONE`, weekly `RRULE`, `EXDATE`, and a moved `RECURRENCE-ID` instance. After independent-client download and local master-summary edit, the server retained those structures and the other account remained isolated. The test does **not** prove all DST boundaries, alarms, scheduling semantics or recurrence expansion in real calendar UI clients.
+
+**vCard 4.0 with richer contact fields:** [CI #42401433087](https://github.com/GoreeCloud/DAV/actions/runs/42401433087) passed all four jobs after the discovered CardDAV profile explicitly set vdirsyncer's `use_vcard_4 = true`. A synthetic photo data URI, two phone numbers, and two email addresses survived server-to-client sync and a local display-name edit back to the server, with Bob's card collection unchanged. [The initial run #42401250721](https://github.com/GoreeCloud/DAV/actions/runs/42401250721) failed the strict version assertion because the client default did not request vCard 4.0; it does not establish a server defect. Real device clients and larger photos, groups and varied vCard conversions remain unverified.
+
 ## Contract tests to complete
 
 1. DAV discovery and principal resolution for a newly provisioned account.
