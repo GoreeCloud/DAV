@@ -34,6 +34,9 @@ fi
 python3 - <<'PY'
 import base64
 import html
+import os
+import sqlite3
+from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -94,12 +97,15 @@ def payload(kind, i):
             'FN:Bounded-Contact-%d\nN:Contact;Bounded;;;\nEND:VCARD\n' % (i, i))
     return text.encode(), 'text/vcard; charset=utf-8'
 
+starting_tokens = {}
+current_tokens = {}
 for kind, collection, ext in [
     ('calendar', '/calendars/alice/default/', 'ics'),
     ('contact', '/addressbooks/alice/default/', 'vcf'),
 ]:
     bob_collection = collection.replace('/alice/', '/bob/')
     code, old, initial, _, _ = report('alice', collection)
+    starting_tokens[kind] = old
     assert code == 207 and initial == [], (kind, code, initial)
     code, bob_token, bob_initial, _, _ = report('bob', bob_collection)
     assert code == 207 and bob_initial == [], (kind, code, bob_initial)
@@ -114,6 +120,7 @@ for kind, collection, ext in [
 
     code, final_token, all_changes, _, _ = report('alice', collection, old)
     assert code == 207 and set(all_changes) == expected, (kind, code, all_changes, expected)
+    current_tokens[kind] = final_token
     page_token = old
     observed = []
     for page in range(10):
@@ -139,5 +146,22 @@ for kind, collection, ext in [
     code, _, _, _, err = report('alice', collection, future)
     assert code == 403 and b'valid-sync-token' in err, (kind, code, err[:280])
     print(f'{kind}: 5 changes delivered in bounded pages without loss; future token rejected')
+
+# Simulate an authorized maintenance process that has retired old change rows.
+# Do not purge history from a real DAV instance or while requests are active.
+db_path = Path(os.environ['DAV_DATA_DIR']) / 'metadata' / 'alice' / 'dav.sqlite'
+with sqlite3.connect(db_path) as db:
+    for table in ('calendarchanges', 'addressbookchanges'):
+        count = db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+        assert count >= 5, (table, count)
+        db.execute(f'DELETE FROM {table} WHERE synctoken < (SELECT MAX(synctoken) FROM {table})')
+
+for kind, collection in [('calendar','/calendars/alice/default/'),
+                         ('contact','/addressbooks/alice/default/')]:
+    code, _, _, _, message = report('alice', collection, starting_tokens[kind])
+    assert code == 403 and b'valid-sync-token' in message, (kind, code, message[:280])
+    code, last, changes, _, _ = report('alice', collection, current_tokens[kind])
+    assert code == 207 and not changes, (kind, code, changes)
+    print(f'{kind}: expired token rejected; latest token remains usable')
 PY
 echo 'Bounded CalDAV/CardDAV sync, future-token protection and account isolation passed.'
