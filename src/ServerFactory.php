@@ -21,8 +21,8 @@ final class ServerFactory
         }
         $userPdo = Database::userDatabase($username);
         $principals = new DAVACL\PrincipalBackend\PDO($userPdo);
-        $calendars = new CalDAV\Backend\PDO($userPdo);
-        $addresses = new CardDAV\Backend\PDO($userPdo);
+        $calendars = new ValidatedCalendarBackend($userPdo);
+        $addresses = new PaginatedCardDavBackend($userPdo);
 
         $guard = new PrivateFilesystemGuard($directory);
         $server = new DAV\Server([
