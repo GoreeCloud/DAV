@@ -33,3 +33,9 @@ An unset `DAV_ACCOUNT_FILE_QUOTA_BYTES` still means **no GoreeCloud file-byte ce
 This does **not** make filesystem operations durable across power loss: the writer flushes the staged file before rename but does not call fsync on the file and containing directories. Host disk exhaustion, permission errors, network mounts with divergent rename/flock semantics, and external host processes still require operational controls. Do not confuse atomic visibility of the replacement with full crash durability or end-to-end file versioning.
 
 The `UnmeteredAtomicWritesTest.php` regression checks stream replacement, private staging, failure rollback, unchanged quota reporting, and blocked concurrent mutations under the shared account lock. Real-world load and power-failure tests remain open.
+
+### Same-filesystem staging and file flush
+
+The staged writer now refuses a target whose parent directory has a different filesystem device ID than the private staging directory. PHP can otherwise treat a cross-device rename as a copy/unlink fallback, which is **not atomic**. The writer also calls PHP `fsync()` on its private staged file before committing the rename; a failed file sync fails the upload while leaving the previous target unchanged. Linux CI checks the split-device guard using a disposable `/dev/shm` root when a separate tmpfs is present.
+
+**Durability boundary:** A successful file sync protects the staged bytes, but the containing directory entry is not separately synchronized after rename. Sudden power loss, NFS semantics, host storage failures, externally modified paths and filesystem corruption remain release risks. Operational snapshots and recovery testing are mandatory; this change must not be described as end-to-end crash-consistent storage.

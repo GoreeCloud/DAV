@@ -160,6 +160,35 @@ try {
     $file->delete();
     verifyAtomic(!file_exists($root.'/record.txt'), 'Unmetered file delete failed');
 
+
+    // Exercise the split-filesystem guard without mounting or touching real
+    // DAV data. Linux CI exposes a separate ephemeral /dev/shm tmpfs.
+    $shm = '/dev/shm';
+    $localStat = @stat($base);
+    $shmStat = @stat($shm);
+    if (is_array($localStat) && is_array($shmStat)
+        && ($localStat['dev'] ?? null) !== ($shmStat['dev'] ?? null)
+        && is_writable($shm)) {
+        $other = $shm.'/goreecloud-dav-atomic-'.bin2hex(random_bytes(6));
+        verifyAtomic(mkdir($other, 0700), 'Cannot create synthetic cross-device root');
+        try {
+            $otherGuard = new PrivateFilesystemGuard($other);
+            $otherWriter = FileQuota::unmeteredForAccount($otherGuard, 'alice');
+            $denied = false;
+            try {
+                $otherWriter->put($other.'/must-not-appear.txt', 'test', false);
+            } catch (Forbidden $e) {
+                $denied = str_contains($e->getMessage(), 'same filesystem');
+            }
+            verifyAtomic($denied, 'Cross-filesystem DAV staging was not rejected');
+            verifyAtomic(!file_exists($other.'/must-not-appear.txt'),
+                'Rejected cross-device upload left an incomplete file');
+        } finally {
+            rmdir($other);
+        }
+    } else {
+        echo "Cross-device fixture unavailable on this runner; existing same-device path tested.\n";
+    }
     echo "Unmetered private file staging, failed-stream rollback, quota reporting and cross-process lock passed.\n";
 } finally {
     if (is_resource($worker)) {

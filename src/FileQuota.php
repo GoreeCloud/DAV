@@ -122,11 +122,26 @@ final class FileQuota
                     throw new InsufficientStorage('WebDAV account file quota exceeded');
                 }
             }
-            $staged = tempnam(dirname($this->lockPath), '.dav-upload-');
+            // Rename is guaranteed atomic only when staging and destination
+            // share a filesystem. Refuse split-volume deployments rather than
+            // allowing PHP to emulate EXDEV rename with a non-atomic copy.
+            $stagingDirectory = dirname($this->lockPath);
+            $targetDirectory = dirname($path);
+            $stagingStat = @stat($stagingDirectory);
+            $targetStat = @stat($targetDirectory);
+            if (!is_array($stagingStat) || !is_array($targetStat)
+                || !isset($stagingStat['dev'], $targetStat['dev'])
+                || $stagingStat['dev'] !== $targetStat['dev']) {
+                throw new Forbidden('Atomic WebDAV writes require staging and destination on the same filesystem');
+            }
+            $staged = tempnam($stagingDirectory, '.dav-upload-');
             if ($staged === false) {
                 throw new InsufficientStorage('Unable to stage WebDAV upload');
             }
             try {
+                if (!@chmod($staged, 0600)) {
+                    throw new InsufficientStorage('Unable to secure staged WebDAV file');
+                }
                 $out = @fopen($staged, 'wb');
                 if (!is_resource($out)) {
                     throw new InsufficientStorage('Unable to open staged WebDAV upload');
@@ -167,10 +182,12 @@ final class FileQuota
                     if (!fflush($out)) {
                         throw new InsufficientStorage('Unable to flush staged WebDAV upload');
                     }
+                    if (!function_exists('fsync') || !@fsync($out)) {
+                        throw new InsufficientStorage('Unable to synchronize staged WebDAV file');
+                    }
                 } finally {
                     fclose($out);
                 }
-                @chmod($staged, 0600);
                 // Reject target replacement that became unsafe while streaming.
                 $this->guard->assertSafePath($path);
                 if (($replace && !is_file($path)) || (!$replace && file_exists($path))) {
