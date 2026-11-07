@@ -34,6 +34,13 @@ final class PrivateFile extends File
 
     public function delete()
     {
+        if ($this->quota !== null) {
+            $this->quota->mutate(function (): void {
+                $this->guard->assertSafePath($this->path);
+                parent::delete();
+            });
+            return;
+        }
         $this->guard->assertSafePath($this->path);
         return parent::delete();
     }
@@ -67,8 +74,17 @@ final class PrivateFile extends File
 
     public function setName($name)
     {
+        if ($this->quota !== null) {
+            $this->quota->mutate(fn() => $this->renameWithinAccount((string) $name));
+            return;
+        }
+        $this->renameWithinAccount((string) $name);
+    }
+
+    private function renameWithinAccount(string $name): void
+    {
         $this->guard->assertSafePath($this->path);
-        $target = $this->guard->childPath(dirname($this->path), (string) $name);
+        $target = $this->guard->childPath(dirname($this->path), $name);
         if (file_exists($target)) {
             throw new Forbidden('WebDAV rename target already exists');
         }

@@ -19,6 +19,9 @@ use Sabre\DAV\Exception\InsufficientStorage;
  */
 final class FileQuota
 {
+    // Nested recursive directory removal reuses one exclusive lock in this request.
+    private bool $exclusiveActive = false;
+
     private function __construct(
         private readonly PrivateFilesystemGuard $guard,
         private readonly string $lockPath,
@@ -56,6 +59,16 @@ final class FileQuota
             $used = $this->usageBytes();
             return [$used, max(0, $this->limit - $used)];
         });
+    }
+
+    /**
+     * Serialize WebDAV filesystem mutations against quota-controlled uploads.
+     * Nested file deletions during recursive directory removal use the same
+     * account lock rather than deadlocking on a second flock descriptor.
+     */
+    public function mutate(callable $operation): mixed
+    {
+        return $this->locked(LOCK_EX, $operation);
     }
 
     /** Create or replace a WebDAV file; denied writes preserve the old file. */
@@ -165,6 +178,11 @@ final class FileQuota
 
     private function locked(int $mode, callable $callback): mixed
     {
+        // PHP request execution is single-threaded; only nested callbacks in
+        // this same FileQuota instance may bypass a second file-lock acquire.
+        if ($this->exclusiveActive) {
+            return $callback();
+        }
         Database::assertPrivateStoragePath($this->lockPath);
         if (is_link($this->lockPath)) {
             throw new Forbidden('Symlinked WebDAV quota lock');
@@ -178,8 +196,12 @@ final class FileQuota
             if (!flock($lock, $mode)) {
                 throw new Forbidden('Unable to acquire WebDAV quota lock');
             }
+            if ($mode === LOCK_EX) {
+                $this->exclusiveActive = true;
+            }
             return $callback();
         } finally {
+            $this->exclusiveActive = false;
             flock($lock, LOCK_UN);
             fclose($lock);
         }

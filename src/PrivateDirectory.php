@@ -85,11 +85,20 @@ final class PrivateDirectory extends Directory
 
     public function createDirectory($name)
     {
-        $path = $this->guard->childPath($this->path, (string) $name);
+        if ($this->quota !== null) {
+            $this->quota->mutate(fn() => $this->createDirectoryWithinAccount((string) $name));
+            return;
+        }
+        $this->createDirectoryWithinAccount((string) $name);
+    }
+
+    private function createDirectoryWithinAccount(string $name): void
+    {
+        $path = $this->guard->childPath($this->path, $name);
         if (file_exists($path)) {
             throw new Forbidden('Refusing to overwrite an existing WebDAV resource');
         }
-        return parent::createDirectory($name);
+        parent::createDirectory($name);
     }
 
     public function setName($name)
@@ -97,8 +106,17 @@ final class PrivateDirectory extends Directory
         if ($this->mountRoot) {
             throw new Forbidden('The WebDAV mount root cannot be renamed');
         }
+        if ($this->quota !== null) {
+            $this->quota->mutate(fn() => $this->renameWithinAccount((string) $name));
+            return;
+        }
+        $this->renameWithinAccount((string) $name);
+    }
+
+    private function renameWithinAccount(string $name): void
+    {
         $this->guard->assertSafePath($this->path);
-        $target = $this->guard->childPath(dirname($this->path), (string) $name);
+        $target = $this->guard->childPath(dirname($this->path), $name);
         if (file_exists($target)) {
             throw new Forbidden('WebDAV rename target already exists');
         }
@@ -112,6 +130,15 @@ final class PrivateDirectory extends Directory
     {
         if ($this->mountRoot) {
             throw new Forbidden('The WebDAV mount root cannot be deleted');
+        }
+        if ($this->quota !== null) {
+            // parent::delete() calls each child's delete(); all nested nodes
+            // share this FileQuota and reuse the already-held exclusive lock.
+            $this->quota->mutate(function (): void {
+                $this->guard->assertSafePath($this->path);
+                parent::delete();
+            });
+            return;
         }
         $this->guard->assertSafePath($this->path);
         parent::delete();
