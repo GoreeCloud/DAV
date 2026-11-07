@@ -80,7 +80,8 @@ final class PrivateDirectory extends Directory
 
     public function getQuotaInfo(): array
     {
-        return $this->quota !== null ? $this->quota->info() : parent::getQuotaInfo();
+        return $this->quota !== null && $this->quota->isEnforced()
+            ? $this->quota->info() : parent::getQuotaInfo();
     }
 
     public function createDirectory($name)

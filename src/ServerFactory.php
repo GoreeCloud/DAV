@@ -25,11 +25,15 @@ final class ServerFactory
         $addresses = new PaginatedCardDavBackend($userPdo);
 
         $guard = new PrivateFilesystemGuard($directory);
+        // File writes must be staged and serialized even when the optional
+        // quota setting is disabled (the default).
+        $fileStorage = FileQuota::forAccount($guard, $username)
+            ?? FileQuota::unmeteredForAccount($guard, $username);
         $server = new DAV\Server([
             new CalDAV\Principal\Collection($principals),
             new CalDAV\CalendarRoot($principals, $calendars),
             new CardDAV\AddressBookRoot($principals, $addresses),
-            new PrivateDirectory($directory, $guard, FileQuota::forAccount($guard, $username)),
+            new PrivateDirectory($directory, $guard, $fileStorage),
         ]);
         $server->setBaseUri(Config::baseUri());
         $server->debugExceptions = false;

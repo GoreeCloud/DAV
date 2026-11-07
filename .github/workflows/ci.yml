@@ -34,6 +34,7 @@ jobs:
           php tests/ServiceLockConcurrencyTest.php
           php tests/QuotaMutationLockTest.php
           php tests/ConcurrentQuotaUploadsTest.php
+          php tests/UnmeteredAtomicWritesTest.php
           php tests/SyncPaginationTest.php
           php tests/StoragePathTest.php
           php tests/ProvisioningCleanupTest.php

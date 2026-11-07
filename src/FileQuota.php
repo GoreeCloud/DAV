@@ -26,6 +26,7 @@ final class FileQuota
         private readonly PrivateFilesystemGuard $guard,
         private readonly string $lockPath,
         private readonly int $limit,
+        private readonly bool $enforceLimit = true,
     ) {
     }
 
@@ -52,9 +53,35 @@ final class FileQuota
         return new self($guard, $lockPath, (int) $raw);
     }
 
+    /**
+     * Use the same private staging and account lock when no file-byte quota
+     * was configured. This intentionally does not enable a quota or change
+     * the public DAV quota-available-bytes property.
+     */
+    public static function unmeteredForAccount(PrivateFilesystemGuard $guard, string $username): self
+    {
+        if (!Credentials::validUsername($username)) {
+            throw new \InvalidArgumentException('Invalid account for WebDAV file storage');
+        }
+        $lockPath = Config::dataDir().'/metadata/'.$username.'/.file-quota.lock';
+        Database::assertPrivateStoragePath($lockPath);
+        if (!is_dir(dirname($lockPath)) || is_link($lockPath)) {
+            throw new \RuntimeException('Unsafe account file lock directory');
+        }
+        return new self($guard, $lockPath, PHP_INT_MAX, false);
+    }
+
+    public function isEnforced(): bool
+    {
+        return $this->enforceLimit;
+    }
+
     /** @return array{0: int, 1: int} used bytes and free bytes */
     public function info(): array
     {
+        if (!$this->enforceLimit) {
+            throw new \LogicException('No configured WebDAV file-byte quota');
+        }
         return $this->locked(LOCK_SH, function (): array {
             $used = $this->usageBytes();
             return [$used, max(0, $this->limit - $used)];
@@ -80,14 +107,20 @@ final class FileQuota
                 || ($replace && !is_file($path))) {
                 throw new Forbidden('Invalid WebDAV quota write target');
             }
-            $used = $this->usageBytes();
-            $old = $replace ? filesize($path) : 0;
-            if ($old === false || $used < $old) {
-                throw new Forbidden('Cannot determine WebDAV storage usage');
-            }
-            $available = $this->limit - ($used - $old);
-            if ($available < 0) {
-                throw new InsufficientStorage('WebDAV account file quota exceeded');
+            // With no quota configured, still stage every upload in private
+            // metadata and atomically rename it over the target. Avoid an
+            // unnecessary O(files) scan for the unlimited/default path.
+            $available = PHP_INT_MAX;
+            if ($this->enforceLimit) {
+                $used = $this->usageBytes();
+                $old = $replace ? filesize($path) : 0;
+                if ($old === false || $used < $old) {
+                    throw new Forbidden('Cannot determine WebDAV storage usage');
+                }
+                $available = $this->limit - ($used - $old);
+                if ($available < 0) {
+                    throw new InsufficientStorage('WebDAV account file quota exceeded');
+                }
             }
             $staged = tempnam(dirname($this->lockPath), '.dav-upload-');
             if ($staged === false) {
