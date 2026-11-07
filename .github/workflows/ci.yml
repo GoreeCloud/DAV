@@ -34,7 +34,10 @@ jobs:
           php tests/StoragePathTest.php
           php tests/ProvisioningCleanupTest.php
       - name: Shell integration test syntax
-        run: bash -n tests/IntegrationTest.sh tests/QuotaHttpTest.sh tests/DockerSmokeTest.sh
+        run: |
+          for script in tests/IntegrationTest.sh tests/QuotaHttpTest.sh tests/FullRestoreTest.sh tests/DockerSmokeTest.sh tests/TlsGatewaySmokeTest.sh; do
+            bash -n "$script"
+          done
       - name: Independent SQLite WAL snapshot and staged restore rehearsal
         run: python3 tests/SqliteRecoveryTest.py
       - name: Database/provision smoke
@@ -53,6 +56,8 @@ jobs:
         run: bash tests/IntegrationTest.sh
       - name: Per-account file quota HTTP 507 and rollback
         run: bash tests/QuotaHttpTest.sh
+      - name: Independent whole-service backup and recovery rehearsal
+        run: bash tests/FullRestoreTest.sh
 
   container-smoke:
     runs-on: ubuntu-latest
