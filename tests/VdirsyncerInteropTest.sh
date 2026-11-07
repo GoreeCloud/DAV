@@ -189,4 +189,64 @@ for uri in "calendars/alice/default/$calendar_name" "addressbooks/alice/default/
     exit 1
   fi
 done
-printf 'Independent vdirsyncer 0.21.0 client passed CalDAV/CardDAV create, update, remote refresh and account isolation.\n'
+# A second independent vdirsyncer profile must discover collections from the
+# service root using standard CalDAV/CardDAV principal/home-set properties.
+# This is deliberately distinct from the direct collection URL test above.
+mkdir -p "$work/discovered-calendars" "$work/discovered-contacts" "$work/discovered-status"
+cat > "$work/discovered.conf" <<CONFIG
+[general]
+status_path = "$work/discovered-status"
+
+[pair discovered_calendar_pair]
+a = "discovered_calendar_local"
+b = "discovered_calendar_remote"
+collections = ["from b"]
+implicit = "create"
+
+[storage discovered_calendar_local]
+type = "filesystem"
+path = "$work/discovered-calendars"
+fileext = ".ics"
+
+[storage discovered_calendar_remote]
+type = "caldav"
+url = "$base/"
+username = "alice"
+password = "alice-vdirsyncer-test-password-12345"
+auth = "basic"
+
+[pair discovered_contact_pair]
+a = "discovered_contact_local"
+b = "discovered_contact_remote"
+collections = ["from b"]
+implicit = "create"
+
+[storage discovered_contact_local]
+type = "filesystem"
+path = "$work/discovered-contacts"
+fileext = ".vcf"
+
+[storage discovered_contact_remote]
+type = "carddav"
+url = "$base/"
+username = "alice"
+password = "alice-vdirsyncer-test-password-12345"
+auth = "basic"
+CONFIG
+chmod 0600 "$work/discovered.conf"
+export VDIRSYNCER_CONFIG="$work/discovered.conf"
+"$DAV_VDIRSYNCER_BIN" discover discovered_calendar_pair discovered_contact_pair
+"$DAV_VDIRSYNCER_BIN" sync discovered_calendar_pair discovered_contact_pair
+grep -RqF 'Independent Client Remote Edit' "$work/discovered-calendars"
+grep -RqF 'Independent Client Remote Edit' "$work/discovered-contacts"
+python3 - "$DAV_DATA_DIR" <<'PY'
+from pathlib import Path
+import sqlite3, sys
+root = Path(sys.argv[1])
+for account, count in [('alice', 1), ('bob', 0)]:
+    with sqlite3.connect(root/'metadata'/account/'dav.sqlite') as db:
+        assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == count
+        assert db.execute('SELECT COUNT(*) FROM cards').fetchone()[0] == count
+PY
+
+printf 'Independent vdirsyncer 0.21.0 client passed CalDAV/CardDAV round-trip, discovery and account isolation.\n'
