@@ -431,4 +431,54 @@ with sqlite3.connect(root/'metadata'/'bob'/'dav.sqlite') as db:
     assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 0
 PY
 
-printf 'Independent client passed DAV discovery, two-way task edits, timezone recurrence exceptions and contacts.\n'
+# Verify a richer vCard 4.0 record through the independent CardDAV client.
+# All details are synthetic; the small inline PNG is a harmless test fixture.
+cat > "$work/rich-contact.vcf" <<'RICHVCARD'
+BEGIN:VCARD
+VERSION:4.0
+N:Example;Richer;;;
+FN:Independent Rich vCard Contact
+UID:urn:uuid:44444444-4444-4444-8444-444444444444
+EMAIL;TYPE=work:rich@example.invalid
+EMAIL;TYPE=home:rich-home@example.invalid
+TEL;VALUE=uri;TYPE=cell:tel:+12025550123
+TEL;VALUE=uri;TYPE=work:tel:+12025550124
+PHOTO:data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ
+ AAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==
+END:VCARD
+RICHVCARD
+contact_status="$(curl --silent --show-error --max-time 12 --output "$work/rich-contact-response" --write-out '%{http_code}' \
+  --user 'alice:alice-vdirsyncer-test-password-12345' --request PUT \
+  -H 'Content-Type: text/vcard; charset=utf-8' --data-binary @"$work/rich-contact.vcf" \
+  "$base/addressbooks/alice/default/vdir-rich.vcf")"
+if [[ "$contact_status" != 201 && "$contact_status" != 204 ]]; then
+  echo "Rich vCard 4.0 PUT failed: HTTP $contact_status" >&2
+  exit 1
+fi
+"$DAV_VDIRSYNCER_BIN" sync discovered_contact_pair
+rich_local="$(grep -RlF 'UID:urn:uuid:44444444-4444-4444-8444-444444444444' "$work/discovered-contacts" | head -n 1)"
+[[ -n "$rich_local" && -f "$rich_local" ]] || { echo 'Independent client did not download vCard 4.0' >&2; exit 1; }
+for marker in 'VERSION:4.0' 'rich@example.invalid' 'rich-home@example.invalid' \
+              'tel:+12025550123' 'tel:+12025550124' 'PHOTO:data:image/png;base64'; do
+  grep -Fq "$marker" "$rich_local" || { echo "Independent client lost vCard property: $marker" >&2; exit 1; }
+done
+sed -i 's/FN:Independent Rich vCard Contact/FN:Independent Rich Contact Edited Locally/' "$rich_local"
+"$DAV_VDIRSYNCER_BIN" sync discovered_contact_pair
+python3 - "$DAV_DATA_DIR" <<'PY'
+from pathlib import Path
+import sqlite3, sys
+root = Path(sys.argv[1])
+with sqlite3.connect(root/'metadata'/'alice'/'dav.sqlite') as db:
+    rows = db.execute('SELECT uri, carddata FROM cards').fetchall()
+    assert len(rows) == 2, (len(rows), [x[0] for x in rows])
+    rich = [data.encode('utf-8') if isinstance(data, str) else bytes(data) for name, data in rows if name == 'vdir-rich.vcf']
+    assert len(rich) == 1, len(rich)
+    for expected in [b'VERSION:4.0', b'FN:Independent Rich Contact Edited Locally',
+                     b'rich@example.invalid', b'rich-home@example.invalid',
+                     b'tel:+12025550123', b'tel:+12025550124', b'PHOTO:data:image/png;base64']:
+        assert expected in rich[0], f'Lost contact data: {expected!r}'
+with sqlite3.connect(root/'metadata'/'bob'/'dav.sqlite') as db:
+    assert db.execute('SELECT COUNT(*) FROM cards').fetchone()[0] == 0
+PY
+
+printf 'Independent client passed discovery, task editing, timezone recurrence exceptions and vCard 4.0 rich contacts.\n'
