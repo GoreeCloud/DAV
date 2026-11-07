@@ -39,6 +39,14 @@ The client synced a synthetic iCalendar event and vCard 3.0 contact from local f
 
 **vCard 4.0 with richer contact fields:** [CI #42401433087](https://github.com/GoreeCloud/DAV/actions/runs/42401433087) passed all four jobs after the discovered CardDAV profile explicitly set vdirsyncer's `use_vcard_4 = true`. A synthetic photo data URI, two phone numbers, and two email addresses survived server-to-client sync and a local display-name edit back to the server, with Bob's card collection unchanged. [The initial run #42401250721](https://github.com/GoreeCloud/DAV/actions/runs/42401250721) failed the strict version assertion because the client default did not request vCard 4.0; it does not establish a server defect. Real device clients and larger photos, groups and varied vCard conversions remain unverified.
 
+## Conditional-write and incremental-sync protocol checks (CI, November 7, 2026)
+
+**Lost-update prevention:** [GitHub Actions #42403750740](https://github.com/GoreeCloud/DAV/actions/runs/42403750740) passed all four jobs, including [the conditional-write regression](../tests/ConditionalWritesTest.sh). For a synthetic CalDAV event, CardDAV contact, and WebDAV file, the test verifies that `If-None-Match: *` creates but does not overwrite an existing resource; stale `If-Match` updates and deletes return HTTP 412 and retain newer content; and operations using current strong ETags succeed. Clients must still implement and respect HTTP preconditions and conflict-resolution UX. This is not proof of concurrent out-of-band writer safety.
+
+**Incremental change notifications:** The [first incremental-sync run #42404114800](https://github.com/GoreeCloud/DAV/actions/runs/42404114800) failed due to a strict-mode Bash fixture declaration bug; that was corrected in [commit `6954944`](https://github.com/GoreeCloud/DAV/commit/695494417e9f10b28338e2356b725a9c8ae78c6c). [GitHub Actions #42404251192](https://github.com/GoreeCloud/DAV/actions/runs/42404251192) then **passed all four jobs**, including [IncrementalSyncTest.sh](../tests/IncrementalSyncTest.sh). For calendar events and contacts, it checks `sync-collection` REPORT tokens after creation, editing and deletion, 404 deletion tombstones, and isolation between Alice's and Bob's collections.
+
+Both are **synthetic single-node HTTP tests on loopback**. Long-offline client token expiry, collection pagination, concurrent writer ordering, real mobile/desktop client reconciliation, production ingress, and authenticated multitenant monitoring remain open release requirements.
+
 ## Contract tests to complete
 
 1. DAV discovery and principal resolution for a newly provisioned account.
