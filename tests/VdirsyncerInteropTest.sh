@@ -307,4 +307,49 @@ with sqlite3.connect(root/'metadata'/'bob'/'dav.sqlite') as db:
     assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 0
 PY
 
-printf 'Independent client passed DAV discovery, iCalendar events, VTODO, recurrence, contacts and account isolation.\n'
+# The independent client must also *edit* VTODOs in both directions, not only download them.
+# The discovered local filename may be an encoded UID rather than vdir-task.ics.
+task_path="$(grep -RlF 'UID:vdir-task-001@example.invalid' "$work/discovered-calendars" | head -n 1)"
+[[ -n "$task_path" && -f "$task_path" ]] || { echo 'vdirsyncer failed to discover VTODO local file' >&2; exit 1; }
+sed -i \
+  -e 's/SUMMARY:Independent Client Task/SUMMARY:Independent Client Task Local Edit/' \
+  -e 's/STATUS:NEEDS-ACTION/STATUS:IN-PROCESS/' "$task_path"
+"$DAV_VDIRSYNCER_BIN" sync discovered_calendar_pair
+python3 - "$DAV_DATA_DIR" <<'PY'
+from pathlib import Path
+import sqlite3, sys
+with sqlite3.connect(Path(sys.argv[1])/'metadata'/'alice'/'dav.sqlite') as db:
+    rows = db.execute('SELECT calendardata FROM calendarobjects').fetchall()
+    assert len(rows) == 3, len(rows)
+    tasks = [v[0].encode() if isinstance(v[0], str) else bytes(v[0]) for v in rows
+             if b'UID:vdir-task-001@example.invalid' in (v[0].encode() if isinstance(v[0], str) else bytes(v[0]))]
+    assert len(tasks) == 1, len(tasks)
+    assert b'SUMMARY:Independent Client Task Local Edit' in tasks[0]
+    assert b'STATUS:IN-PROCESS' in tasks[0]
+PY
+# Modify only the remote copy, then synchronize back without a local conflict.
+cp -- "$task_path" "$work/task-remotely-edited.ics"
+sed -i \
+  -e 's/SUMMARY:Independent Client Task Local Edit/SUMMARY:Independent Client Task Remote Edit/' \
+  -e 's/STATUS:IN-PROCESS/STATUS:COMPLETED/' "$work/task-remotely-edited.ics"
+task_status="$(curl --silent --show-error --max-time 12 --output "$work/task-update-response" --write-out '%{http_code}' \
+  --user 'alice:alice-vdirsyncer-test-password-12345' --request PUT \
+  -H 'Content-Type: text/calendar; charset=utf-8' --data-binary @"$work/task-remotely-edited.ics" \
+  "$base/calendars/alice/default/vdir-task.ics")"
+if [[ "$task_status" != 204 && "$task_status" != 200 ]]; then
+  echo "Server-side VTODO completion failed: HTTP $task_status" >&2
+  exit 1
+fi
+"$DAV_VDIRSYNCER_BIN" sync discovered_calendar_pair
+grep -Fq 'SUMMARY:Independent Client Task Remote Edit' "$task_path"
+grep -Fq 'STATUS:COMPLETED' "$task_path"
+python3 - "$DAV_DATA_DIR" <<'PY'
+from pathlib import Path
+import sqlite3, sys
+with sqlite3.connect(Path(sys.argv[1])/'metadata'/'alice'/'dav.sqlite') as db:
+    assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 3
+with sqlite3.connect(Path(sys.argv[1])/'metadata'/'bob'/'dav.sqlite') as db:
+    assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 0
+PY
+
+printf 'Independent client passed DAV discovery, events, two-way VTODO edits, recurrence, contacts and account isolation.\n'
