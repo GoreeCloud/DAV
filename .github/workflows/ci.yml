@@ -32,6 +32,7 @@ jobs:
           php tests/FileETagTest.php
           php tests/FileQuotaTest.php
           php tests/ServiceLockConcurrencyTest.php
+          php tests/SyncPaginationTest.php
           php tests/StoragePathTest.php
           php tests/ProvisioningCleanupTest.php
       - name: Shell integration test syntax
