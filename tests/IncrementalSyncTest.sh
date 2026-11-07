@@ -71,7 +71,8 @@ if count:
 PY
 }
 check_sequence() {
-  local kind="$1" ext="$2" content_type="$3" dir="$4" src="$5" old_label="$6" new_label="$7" uri="ci-sync.$ext"
+  local kind="$1" ext="$2" content_type="$3" dir="$4" src="$5" old_label="$6" new_label="$7"
+  local uri="ci-sync.$ext"
   local alice='alice:alice-sync-test-password-12345' bob='bob:bob-sync-test-password-67890' token initial next updated
   token="$(report "$alice" "$base/$dir/alice/default/" '')"
   assert_changes "$uri" 'none' 0
