@@ -36,7 +36,7 @@ jobs:
           php tests/ProvisioningCleanupTest.php
       - name: Shell integration test syntax
         run: |
-          for script in tests/IntegrationTest.sh tests/ConditionalWritesTest.sh tests/QuotaHttpTest.sh tests/FullRestoreTest.sh tests/EncryptedBackupTransportTest.sh tests/DockerSmokeTest.sh tests/TlsGatewaySmokeTest.sh tests/VdirsyncerInteropTest.sh; do
+          for script in tests/IntegrationTest.sh tests/ConditionalWritesTest.sh tests/IncrementalSyncTest.sh tests/QuotaHttpTest.sh tests/FullRestoreTest.sh tests/EncryptedBackupTransportTest.sh tests/DockerSmokeTest.sh tests/TlsGatewaySmokeTest.sh tests/VdirsyncerInteropTest.sh; do
             bash -n "$script"
           done
       - name: Independent SQLite WAL snapshot and staged restore rehearsal
@@ -57,6 +57,8 @@ jobs:
         run: bash tests/IntegrationTest.sh
       - name: Verify CalDAV CardDAV WebDAV conditional-write conflict protection
         run: bash tests/ConditionalWritesTest.sh
+      - name: Verify incremental CalDAV and CardDAV change tokens and deletion tombstones
+        run: bash tests/IncrementalSyncTest.sh
       - name: Per-account file quota HTTP 507 and rollback
         run: bash tests/QuotaHttpTest.sh
       - name: Independent whole-service backup and recovery rehearsal
