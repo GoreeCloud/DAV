@@ -36,7 +36,7 @@ jobs:
           php tests/ProvisioningCleanupTest.php
       - name: Shell integration test syntax
         run: |
-          for script in tests/IntegrationTest.sh tests/QuotaHttpTest.sh tests/FullRestoreTest.sh tests/DockerSmokeTest.sh tests/TlsGatewaySmokeTest.sh; do
+          for script in tests/IntegrationTest.sh tests/QuotaHttpTest.sh tests/FullRestoreTest.sh tests/DockerSmokeTest.sh tests/TlsGatewaySmokeTest.sh tests/VdirsyncerInteropTest.sh; do
             bash -n "$script"
           done
       - name: Independent SQLite WAL snapshot and staged restore rehearsal
@@ -78,3 +78,28 @@ jobs:
         run: bash -n tests/TlsGatewaySmokeTest.sh
       - name: Verify disposable TLS proxy and gateway IP throttling
         run: bash tests/TlsGatewaySmokeTest.sh
+
+  independent-client-interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified upstream v4 SHA
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # verified upstream v2 SHA
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, xml, dom
+          tools: composer:v2
+      - name: Install locked PHP DAV dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+      - name: Verify pinned vdirsyncer wheel and install into ephemeral venv
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dav-vdirsyncer-venv"
+          mkdir -p "$RUNNER_TEMP/dav-vdirsyncer-wheel"
+          "$RUNNER_TEMP/dav-vdirsyncer-venv/bin/python" -m pip download --disable-pip-version-check --no-deps --only-binary=:all: --dest "$RUNNER_TEMP/dav-vdirsyncer-wheel" 'vdirsyncer==0.21.0'
+          echo "0f7320b0872c7ed804d146454107247f19f9e832815492aeb64fa8d2d09f4b6e  $RUNNER_TEMP/dav-vdirsyncer-wheel/vdirsyncer-0.21.0-py3-none-any.whl" | sha256sum --check
+          "$RUNNER_TEMP/dav-vdirsyncer-venv/bin/python" -m pip install --disable-pip-version-check --no-input "$RUNNER_TEMP/dav-vdirsyncer-wheel/vdirsyncer-0.21.0-py3-none-any.whl"
+          "$RUNNER_TEMP/dav-vdirsyncer-venv/bin/vdirsyncer" --version
+      - name: Independent CalDAV/CardDAV client round-trip
+        run: |
+          export DAV_VDIRSYNCER_BIN="$RUNNER_TEMP/dav-vdirsyncer-venv/bin/vdirsyncer"
+          bash tests/VdirsyncerInteropTest.sh
