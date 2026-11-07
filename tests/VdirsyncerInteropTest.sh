@@ -249,4 +249,62 @@ for account, count in [('alice', 1), ('bob', 0)]:
         assert db.execute('SELECT COUNT(*) FROM cards').fetchone()[0] == count
 PY
 
-printf 'Independent vdirsyncer 0.21.0 client passed CalDAV/CardDAV round-trip, discovery and account isolation.\n'
+# Independently synchronize CalDAV VTODO tasks and a recurring VEVENT,
+# without flattening RRULEs or reusing a preconfigured resource list.
+cat > "$work/new-task.ics" <<'TODOICS'
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GoreeCloud DAV Independent Client Task Smoke//EN
+BEGIN:VTODO
+UID:vdir-task-001@example.invalid
+DTSTAMP:20261107T120000Z
+DTSTART:20261108T120000Z
+DUE:20261108T140000Z
+STATUS:NEEDS-ACTION
+SUMMARY:Independent Client Task
+END:VTODO
+END:VCALENDAR
+TODOICS
+cat > "$work/new-recurring.ics" <<'RECURICS'
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GoreeCloud DAV Independent Client Recurrence Smoke//EN
+BEGIN:VEVENT
+UID:vdir-recurring-001@example.invalid
+DTSTAMP:20261107T120000Z
+DTSTART:20261108T130000Z
+DTEND:20261108T140000Z
+RRULE:FREQ=WEEKLY;COUNT=3
+SUMMARY:Independent Client Recurring Event
+END:VEVENT
+END:VCALENDAR
+RECURICS
+for kind in task recurring; do
+  status="$(curl --silent --show-error --max-time 12 --output "$work/task-response" --write-out '%{http_code}' \
+    --user 'alice:alice-vdirsyncer-test-password-12345' --request PUT \
+    -H 'Content-Type: text/calendar; charset=utf-8' --data-binary @"$work/new-$kind.ics" \
+    "$base/calendars/alice/default/vdir-$kind.ics")"
+  if [[ "$status" != 201 && "$status" != 204 ]]; then
+    echo "CalDAV $kind upload failed: HTTP $status" >&2
+    exit 1
+  fi
+done
+"$DAV_VDIRSYNCER_BIN" sync discovered_calendar_pair
+grep -RqF 'BEGIN:VTODO' "$work/discovered-calendars"
+grep -RqF 'SUMMARY:Independent Client Task' "$work/discovered-calendars"
+grep -RqF 'RRULE:FREQ=WEEKLY;COUNT=3' "$work/discovered-calendars"
+python3 - "$DAV_DATA_DIR" <<'PY'
+from pathlib import Path
+import sqlite3, sys
+root = Path(sys.argv[1])
+with sqlite3.connect(root/'metadata'/'alice'/'dav.sqlite') as db:
+    rows = db.execute('SELECT calendardata FROM calendarobjects').fetchall()
+    assert len(rows) == 3, len(rows)
+    payloads = [r[0].encode() if isinstance(r[0], str) else bytes(r[0]) for r in rows]
+    assert any(b'BEGIN:VTODO' in data for data in payloads)
+    assert any(b'RRULE:FREQ=WEEKLY;COUNT=3' in data for data in payloads)
+with sqlite3.connect(root/'metadata'/'bob'/'dav.sqlite') as db:
+    assert db.execute('SELECT COUNT(*) FROM calendarobjects').fetchone()[0] == 0
+PY
+
+printf 'Independent client passed DAV discovery, iCalendar events, VTODO, recurrence, contacts and account isolation.\n'
