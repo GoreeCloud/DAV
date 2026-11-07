@@ -8,6 +8,9 @@ The client exercises creation of one iCalendar event and one vCard 3.0 contact f
 
 The test depends on Python 3, curl, PHP CLI 8.3+, SQLite, Composer-installed PHP packages, and vdirsyncer 0.21.0. Its second profile uses `collections = ["from b"]` with explicit `discover`, rather than preconfigured single-collection URLs. The CI job installs the **exact vdirsyncer release version** in a temporary virtual environment. Its transitive Python dependencies are not fully locked or hash-pinned yet; CI uses read-only repository permissions. This remains a supply-chain limitation, and the upstream package was **not** independently security-audited. Upstream project's BSD-3-Clause license and published Python dependency manifest were inspected before introducing this disposable tool. Do not include this tool in the shipping DAV container.
 
+
+**Additional CalDAV content check (2026-11-07):** the disposable server accepted a synthetic VTODO item and an event containing a weekly `RRULE:FREQ=WEEKLY;COUNT=3`. The independent vdirsyncer client discovered and downloaded both, and the test verified the task marker and unchanged recurrence rule in the local files and database. [CI run #42399558368](https://github.com/GoreeCloud/DAV/actions/runs/42399558368) passed all four jobs. This is a basic task/recurrence **download** test, not proof of full bidirectional task editing or complex recurrence exceptions.
+
 ## Exclusions
 
 A passing test is evidence of one independent command-line client, **not** DAVx5, Apple Calendar/Contacts, Thunderbird, Evolution or GoreeCloud native-client compatibility. This test does not validate vCard photos/groups, complex recurring events, time zones, free/busy, client app UX, multi-user sharing, scheduling or certificate-validation behavior on a real device. It does not authorize public ingress or production data use.

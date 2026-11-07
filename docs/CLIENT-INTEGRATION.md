@@ -30,6 +30,9 @@ The client synced a synthetic iCalendar event and vCard 3.0 contact from local f
 
 **Not verified by this result:** DAVx5 on Android, Apple Calendar/Contacts, Thunderbird, Evolution, GoreeCloud native clients, device credential-store behavior, complex recurrence, attachments, group contacts, TLS trust on real devices, or production interoperability. Do not mark any of those as complete.
 
+
+**VTODO and basic recurrence check:** [CI #42399558368](https://github.com/GoreeCloud/DAV/actions/runs/42399558368) additionally passed vdirsyncer downloads of a synthetic VTODO item and an event with `RRULE:FREQ=WEEKLY;COUNT=3`. This preserves those simple structures; exception dates, recurring overrides, VTIMEZONE edge cases, alarms and full two-way VTODO workflows remain untested.
+
 ## Contract tests to complete
 
 1. DAV discovery and principal resolution for a newly provisioned account.
