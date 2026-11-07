@@ -1,12 +1,12 @@
 # GoreeCloud DAV — implemented and verified features
 
-**Status:** experimental review branch; no production release or deployment. Claims below reference GitHub Actions on commit `4730bbadfb1877f1f66cda5963dcdd4ab53b1643` on November 5, 2026, not production usage.
+**Status:** experimental review branch; no production release or deployment. Earlier protocol and backup acceptance evidence originates with commit `4730bba` on November 5, 2026; subsequent checks now include bounded synchronization and expired-token handling at commit `0f4ebbf` on November 7, 2026. All claims refer to disposable CI or source review, not production.
 
 ## CI-verified on the published review branch
 
 - Composer dependency resolution and advisory audit; PHP syntax and standalone security/backup/filesystem path tests.
 - SQLite account registry and per-account DAV databases; CLI account provisioning, password rotation, disable and re-enable.
-- Authenticated HTTP CalDAV events, CardDAV contacts, default calendar/address-book discovery and synchronization REPORT.
+- Authenticated HTTP CalDAV events, CardDAV contacts, default calendar/address-book discovery and synchronization REPORT. Bounded change pages, intermediate tokens and rejection of future/expired tokens were verified in four-job CI runs #42405779796 and #42406000041; no production change-history retention policy or real-device recovery is claimed.
 - Account-isolated WebDAV file CRUD, nested MKCOL/MOVE/COPY, exclusive LOCK/UNLOCK, conditional ETags with strong content SHA-256 validators, and denial of symlinked resources.
 - Isolation of users' calendars, contacts and files; unauthenticated access and disabled accounts rejected.
 - Disposable Docker/Apache build and startup, no seeded users, locally simulated trusted proxy, refusal of plaintext/spoofed TLS requests, and PHP PDO SQLite `backup:create`/`backup:verify`.

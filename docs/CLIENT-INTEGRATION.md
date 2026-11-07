@@ -47,6 +47,14 @@ The client synced a synthetic iCalendar event and vCard 3.0 contact from local f
 
 Both are **synthetic single-node HTTP tests on loopback**. Long-offline client token expiry, collection pagination, concurrent writer ordering, real mobile/desktop client reconciliation, production ingress, and authenticated multitenant monitoring remain open release requirements.
 
+## Bounded sync and expired-token handling (CI, November 7, 2026)
+
+The pinned SabreDAV 4.6.0 CardDAV SQLite backend previously returned a collection's latest sync token even when a bounded REPORT omitted changes. GoreeCloud's PaginatedCardDavBackend advances to the token **after the final included change**, marks incomplete pages, and preserves the 507 continuation marker inside the 207 Multi-Status response. ValidatedCalendarBackend adds future/expired-token checks around the upstream CalDAV backend, whose bounded paging is retained.
+
+[GitHub Actions run #42405779796](https://github.com/GoreeCloud/DAV/actions/runs/42405779796) passed all four jobs, including the bounded-sync test that received five calendar and five address-book changes in multiple two-item pages without omissions, premature final tokens, or cross-account visibility. [Run #42406000041](https://github.com/GoreeCloud/DAV/actions/runs/42406000041) also passed all four jobs after adding simulated history-pruning checks: obsolete calendar/contact tokens produce a 403 DAV valid-sync-token error, while current tokens remain usable.
+
+**Client contract:** When a sync-collection REPORT includes the 507 continuation item, save and follow the returned intermediate token until the server supplies the final page. If the server returns 403 with DAV valid-sync-token, do a safe full resynchronization without discarding unsent local edits. Never assume a page limit guarantees a complete result or that old tokens remain valid forever. GoreeCloud has not enabled automatic change-history retention/expiration, verified high-volume paging under concurrent writers, or tested every native client.
+
 ## Contract tests to complete
 
 1. DAV discovery and principal resolution for a newly provisioned account.
