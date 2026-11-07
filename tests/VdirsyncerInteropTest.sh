@@ -232,6 +232,8 @@ url = "$base/"
 username = "alice"
 password = "alice-vdirsyncer-test-password-12345"
 auth = "basic"
+# Request vCard 4.0 rather than the client default (typically vCard 3.0).
+use_vcard_4 = true
 CONFIG
 chmod 0600 "$work/discovered.conf"
 export VDIRSYNCER_CONFIG="$work/discovered.conf"
