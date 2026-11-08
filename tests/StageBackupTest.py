@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Security regression for offline DAV tar staging. Synthetic data only."""
 import io
+import signal
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -90,5 +92,33 @@ with tempfile.TemporaryDirectory(prefix="goreecloud-dav-stage-test-") as folder:
     result = run(valid, preexisting)
     assert result.returncode != 0
     assert (preexisting / "sentinel").read_bytes() == b"unchanged"
+
+
+    # Leave a tar stream open after its first member, then interrupt staging
+    # while it waits for the next header. Partial plaintext must be erased.
+    interrupted = root / "interrupted"
+    first_header = archive([("snapshot/manifest.json", "file", b"first")])[:1024]
+    process = subprocess.Popen(
+        [sys.executable, str(STAGER), "--destination", str(interrupted)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        assert process.stdin is not None
+        process.stdin.write(first_header)
+        process.stdin.flush()
+        deadline = time.monotonic() + 6.0
+        while not (interrupted / "snapshot/manifest.json").exists():
+            assert process.poll() is None, "Stage process exited before interrupt"
+            assert time.monotonic() < deadline, "Staging did not process first tar entry"
+            time.sleep(0.01)
+        process.send_signal(signal.SIGINT)
+        time.sleep(0.1)
+        process.stdin.close()
+        assert process.wait(timeout=8) != 0, "Interrupted staging unexpectedly succeeded"
+        assert not interrupted.exists(), "Interrupted staging retained plaintext files"
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
 
 print("Safe DAV tar staging: normal files, empty dirs, private modes, traversal/link/duplicate/bomb rejection and cleanup passed.")
