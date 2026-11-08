@@ -31,8 +31,15 @@ mkdir($base.'/files/alice', 0700, true);
 mkdir($base.'/metadata/alice', 0700, true);
 try {
     mkdir($base.'/files/alice/empty/child', 0700, true);
-    file_put_contents($base.'/dav.sqlite', 'synthetic-registry');
-    file_put_contents($base.'/metadata/alice/dav.sqlite', 'synthetic-metadata');
+    // Real SQLite schemas are required so the backup verifier can reject a
+    // checksummed-but-corrupt database, not just incomplete file inventories.
+    $registry = new PDO('sqlite:'.$base.'/dav.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $metadata = new PDO('sqlite:'.$base.'/metadata/alice/dav.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $registry->exec(file_get_contents(dirname(__DIR__).'/resources/sql/002-accounts.sql'));
+    $metadata->exec(file_get_contents(dirname(__DIR__).'/resources/sql/001-initial.sql'));
+    $registry->exec("INSERT INTO goreecloud_accounts(username,password_hash,created_at) VALUES ('alice','test-placeholder-hash',1)");
+    $registry = null;
+    $metadata = null;
     file_put_contents($base.'/files/alice/contact.txt', 'test-content');
     $entries = [
         'dav.sqlite' => hash_file('sha256', $base.'/dav.sqlite'),
@@ -105,7 +112,61 @@ try {
     unlink($base.'/files/alice/unlisted.txt');
 
     check(Backup::verify($base)['files'] === 3, 'snapshot accepted again after repairing fixture');
-    echo "Backup completeness and integrity tests passed.\n";
+
+    // A maliciously revised manifest can have perfectly matching SHA-256
+    // entries while the database it describes is unusable. Reject that too.
+    $originalRegistry = file_get_contents($base.'/dav.sqlite');
+    $originalMetadata = file_get_contents($base.'/metadata/alice/dav.sqlite');
+    file_put_contents($base.'/metadata/alice/dav.sqlite', 'not-an-SQLite-database');
+    $corrupt = $manifest;
+    $corrupt['sha256']['metadata/alice/dav.sqlite'] =
+        hash_file('sha256', $base.'/metadata/alice/dav.sqlite');
+    $save($corrupt);
+    expectFailure(static fn() => Backup::verify($base), 'SQLite backup validation failed');
+    file_put_contents($base.'/metadata/alice/dav.sqlite', $originalMetadata);
+
+    // Registry and manifest must describe the exact same collection of users.
+    $pdo = new PDO('sqlite:'.$base.'/dav.sqlite');
+    $pdo->exec("DELETE FROM goreecloud_accounts WHERE username = 'alice'");
+    $pdo = null;
+    $mismatch = $manifest;
+    $mismatch['sha256']['dav.sqlite'] = hash_file('sha256', $base.'/dav.sqlite');
+    $save($mismatch);
+    expectFailure(static fn() => Backup::verify($base), 'SQLite backup validation failed');
+    file_put_contents($base.'/dav.sqlite', $originalRegistry);
+
+    // A syntactically valid SQLite database with no CalDAV/CardDAV tables
+    // must not pass the snapshot verifier simply because its hash matches.
+    $emptyMetadata = $base.'/empty-metadata.sqlite';
+    $pdo = new PDO('sqlite:'.$emptyMetadata);
+    $pdo->exec('CREATE TABLE unrelated (id INTEGER PRIMARY KEY)');
+    $pdo = null;
+    copy($emptyMetadata, $base.'/metadata/alice/dav.sqlite');
+    unlink($emptyMetadata);
+    $wrongSchema = $manifest;
+    $wrongSchema['sha256']['metadata/alice/dav.sqlite'] =
+        hash_file('sha256', $base.'/metadata/alice/dav.sqlite');
+    $save($wrongSchema);
+    expectFailure(static fn() => Backup::verify($base), 'SQLite backup validation failed');
+    file_put_contents($base.'/metadata/alice/dav.sqlite', $originalMetadata);
+
+    // Foreign-key consistency is checked independently of SQLite's page check.
+    $pdo = new PDO('sqlite:'.$base.'/metadata/alice/dav.sqlite');
+    $pdo->exec('CREATE TABLE ci_parent (id INTEGER PRIMARY KEY)');
+    $pdo->exec('CREATE TABLE ci_child (parent_id INTEGER REFERENCES ci_parent(id))');
+    $pdo->exec('PRAGMA foreign_keys=OFF');
+    $pdo->exec('INSERT INTO ci_child(parent_id) VALUES (999)');
+    $pdo = null;
+    $badForeignKey = $manifest;
+    $badForeignKey['sha256']['metadata/alice/dav.sqlite'] =
+        hash_file('sha256', $base.'/metadata/alice/dav.sqlite');
+    $save($badForeignKey);
+    expectFailure(static fn() => Backup::verify($base), 'SQLite backup validation failed');
+    file_put_contents($base.'/metadata/alice/dav.sqlite', $originalMetadata);
+
+    $save($manifest);
+    check(Backup::verify($base)['files'] === 3, 'repaired SQLite and manifest accepted');
+    echo "Backup completeness, SQLite integrity, schema, account inventory and foreign-key tests passed.\n";
 } finally {
     // The test owns the unique temporary tree and never follows symlinks.
     $iterator = new RecursiveIteratorIterator(

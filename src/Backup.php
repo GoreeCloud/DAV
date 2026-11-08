@@ -200,7 +200,70 @@ final class Backup
                 throw new \RuntimeException('Unsupported resource in backup directory');
             }
         }
+        // A correct SHA-256 inventory can still describe a corrupted SQLite
+        // database, or a registry whose accounts disagree with the manifest.
+        // Do not approve restoration solely from hash/inventory checks.
+        self::verifySqliteSnapshots($root, $users);
         return ['files' => count($entries), 'bytes' => $bytes];
+    }
+
+    /**
+     * Verify that every offline SQLite file is readable, structurally sound,
+     * has the expected DAV schema, and agrees with the account manifest.
+     * This is a consistency check, not a cryptographic authenticity proof.
+     * Never open a running service data directory here.
+     */
+    private static function verifySqliteSnapshots(string $root, array $manifestUsers): void
+    {
+        $required = [
+            'dav.sqlite' => ['goreecloud_accounts'],
+        ];
+        foreach ($manifestUsers as $user) {
+            $required['metadata/'.$user.'/dav.sqlite'] = [
+                'principals', 'calendars', 'calendarinstances',
+                'calendarobjects', 'calendarchanges', 'addressbooks',
+                'cards', 'addressbookchanges', 'locks',
+            ];
+        }
+
+        $sortedManifestUsers = $manifestUsers;
+        sort($sortedManifestUsers, SORT_STRING);
+        foreach ($required as $relative => $tables) {
+            $pdo = null;
+            try {
+                $pdo = new PDO('sqlite:'.$root.'/'.$relative, null, null, [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_TIMEOUT => 5,
+                ]);
+                $pdo->exec('PRAGMA query_only = ON');
+                if ($pdo->query('PRAGMA integrity_check(1)')->fetchColumn() !== 'ok') {
+                    throw new \RuntimeException('SQLite integrity_check failed');
+                }
+                if ($pdo->query('PRAGMA foreign_key_check')->fetch(PDO::FETCH_NUM) !== false) {
+                    throw new \RuntimeException('SQLite foreign_key_check failed');
+                }
+
+                $present = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'")
+                    ->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($tables as $table) {
+                    if (!in_array($table, $present, true)) {
+                        throw new \RuntimeException('SQLite required schema is incomplete');
+                    }
+                }
+
+                if ($relative === 'dav.sqlite') {
+                    $actual = $pdo->query('SELECT username FROM goreecloud_accounts ORDER BY username')
+                        ->fetchAll(PDO::FETCH_COLUMN);
+                    if ($actual !== $sortedManifestUsers) {
+                        throw new \RuntimeException('SQLite account registry disagrees with backup manifest');
+                    }
+                }
+            } catch (\Throwable $error) {
+                throw new \RuntimeException('SQLite backup validation failed for '.$relative, 0, $error);
+            } finally {
+                $pdo = null;
+            }
+        }
     }
 
     private static function validateDestination(string $path, string $source): void
