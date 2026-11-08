@@ -104,11 +104,9 @@ mtime validators, this does not mistakenly report a matching ETag for an
 in-place same-size edit within a second. This requires reading the file on
 ETag-producing requests: benchmark large collections and use size/rate limits
 before exposing the service. Do not replace the digest with a coarse metadata
-hash without an independently durable, updated revision store. Conditional
-GET behavior is covered by authored integration tests but remains unverified
-until an isolated SabreDAV runtime executes them.
+hash without an independently durable, updated revision store. Conditional GET and stale-update behavior now pass disposable SabreDAV HTTP integration checks in CI, including current/stale ETags; large-file hashing performance and true concurrent out-of-band writers remain unverified.
 
-## Disposable container acceptance test (authored; not yet remotely executed)
+## Disposable container acceptance test (CI verified; not deployed)
 
 The review-only `tests/DockerSmokeTest.sh` is designed for a disposable Docker-capable CI runner, **not a production server**. It builds the checked-in Dockerfile, checks `docker compose config`, starts the Apache/PHP image with a loopback-only listener and fresh disposable volume, and runs `php bin/dav init` and account provisioning as `www-data`. The test first requires plaintext and spoofed forwarded-TLS requests to fail. It then restarts the disposable container, trusting only the observed Docker-bridge gateway for a simulated TLS-terminating proxy, and checks an authenticated CalDAV `PROPFIND`. Finally it runs `backup:create` and `backup:verify` inside the container and independently checks the resulting SQLite registry integrity. A trap destroys the test container and volume on exit.
 
@@ -122,6 +120,8 @@ bash tests/DockerSmokeTest.sh
 
 Use a free local port or set `DAV_SMOKE_PORT` to a free nonprivileged port; do not run alongside production containers or reuse an existing volume.
 
+**Current verification:** [CI #42504233601](https://github.com/GoreeCloud/DAV/actions/runs/42504233601) passed all four jobs, including the immutable-base Docker smoke, real disposable TLS gateway, independent vdirsyncer client, offline SQLite recovery and GPG transport/staging checks. This does not establish deployment, production key custody or end-user device acceptance.
+
 ## PHP dependency lock and update procedure
 
-The committed `composer.lock` pins the PHP package graph. `composer install --no-dev --no-interaction --prefer-dist --no-scripts` in the image uses that lock; a missing/stale lock fails CI validation instead of silently resolving new versions. Periodic upgrades should happen on a separate reviewed branch using PHP 8.3 and Composer 2: run `composer update --no-interaction --no-scripts` in a trusted disposable environment, inspect package diffs and license/advisory changes, then rerun the complete CI/Docker matrix before approving a new lockfile. Never run an unreviewed dependency-update script on production. The lock does not pin the Docker base image, OS packages or GitHub Actions versions, which remain open supply-chain gates.
+The committed `composer.lock` pins the PHP package graph. `composer install --no-dev --no-interaction --prefer-dist --no-scripts` in the image uses that lock; a missing/stale lock fails CI validation instead of silently resolving new versions. Periodic upgrades should happen on a separate reviewed branch using PHP 8.3 and Composer 2: run `composer update --no-interaction --no-scripts` in a trusted disposable environment, inspect package diffs and license/advisory changes, then rerun the complete CI/Docker matrix before approving a new lockfile. Never run an unreviewed dependency-update script on production. The lock does not pin Debian APT packages or OS repository snapshots. Docker base-image manifest digests and GitHub Actions have separately been pinned and verified; image signatures, package provenance and release operations remain open.

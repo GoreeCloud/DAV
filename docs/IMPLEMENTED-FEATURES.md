@@ -1,6 +1,6 @@
 # GoreeCloud DAV — implemented and verified features
 
-**Status:** experimental review branch; no production release or deployment. Earlier protocol and backup acceptance evidence originates with commit `4730bba` on November 5, 2026; subsequent checks now include bounded synchronization and expired-token handling at commit `0f4ebbf` on November 7, 2026. All claims refer to disposable CI or source review, not production.
+**Status:** experimental review branch; no production release or deployment. Verified source and disposable GitHub Actions checks now include bounded synchronization, concurrent WebDAV mutation safety, default-path atomic file staging, HTTPS discovery, offline SQLite snapshot validation, and safe decrypted archive staging as of November 8, 2026. Latest security/recovery evidence: [CI #42504233601](https://github.com/GoreeCloud/DAV/actions/runs/42504233601) (all four jobs passed). All claims refer to source review and disposable CI, not production.
 
 ## CI-verified on the published review branch
 
@@ -10,7 +10,10 @@
 - Account-isolated WebDAV file CRUD, nested MKCOL/MOVE/COPY, exclusive LOCK/UNLOCK, conditional ETags with strong content SHA-256 validators, and denial of symlinked resources.
 - Isolation of users' calendars, contacts and files; unauthenticated access and disabled accounts rejected.
 - Disposable Docker/Apache build and startup, no seeded users, locally simulated trusted proxy, refusal of plaintext/spoofed TLS requests, and PHP PDO SQLite `backup:create`/`backup:verify`.
-- Pinned SQLite schemas, WAL-mode SQLite snapshot/restore rehearsal, checksummed file and empty-directory inventory, and integrity checks on recovered disposable data.
+- Pinned SQLite schemas, WAL-mode SQLite snapshot/restore rehearsal, checksummed file and empty-directory inventory, and offline verification of each database's integrity, foreign keys, required tables, and registry account inventory ([CI #42502589395](https://github.com/GoreeCloud/DAV/actions/runs/42502589395)).
+- Opt-in uniform per-account WebDAV file-byte ceiling, cross-process quota admission/rename/delete locking, private atomic staging even when quotas are disabled, and rejection of cross-device staging. Sudden power-loss durability and uncooperative host writers remain unverified.
+- Disposable encrypted snapshot transport test using a temporary GPG key plus a standalone offline staging tool that rejects malicious tar paths, links, duplicates, excess payload sizes, and interrupted streams ([CI #42504233601](https://github.com/GoreeCloud/DAV/actions/runs/42504233601)); no production off-site target or key custody has been configured.
+- Real, but disposable, HTTPS reverse-proxy smoke tests with ephemeral certificate/HSTS, IP throttling and forwarded-header checks; independent vdirsyncer CalDAV/CardDAV sync via CI. Neither proves production ingress nor native client compatibility.
 
 The tests are CI smoke/regression checks. They do not verify every DAV client, attack model, upgrade path, or production network configuration.
 
@@ -22,14 +25,14 @@ The tests are CI smoke/regression checks. They do not verify every DAV client, a
 
 ## Not yet production-validated or implemented
 
-- Real TLS reverse-proxy certificate/HSTS and trusted-proxy topology validation; request-rate and authentication-abuse controls.
-- Per-account byte/object quotas, malware inspection, file versioning, public shares, scheduling/delegation and app-specific revocable credentials.
+- Production TLS certificate/HSTS lifecycle, trusted-proxy and DNS topology, credential-aware abuse monitoring and request-rate controls (disposable TLS gateway checks already pass).
+- Per-account individualized quota configuration, object-count/metadata quotas, malware inspection, file versioning, public shares, scheduling/delegation and app-specific revocable credentials. The optional uniform file-byte ceiling is implemented and tested.
 - Android DAVx5, Apple Calendar/Contacts, Thunderbird, Evolution and other independent client interoperability matrix.
-- Encrypted offsite backup, complete service-level restore/rollback and upgrade/migration rehearsals.
-- Dependency lockfile/reproducible release provenance, sustained load tests, observability and independent security signoff.
+- Encrypted and independently protected offsite backup with real key custody, operator-controlled restore/rollback and upgrade/migration rehearsals. Disposable full-service and encrypted-transport restore tests pass, but no actual offsite service has been approved or verified.
+- Debian OS-package provenance and image signatures, sustained load tests, observability and independent security signoff. Composer packages, GitHub Actions and Docker base-image digests are already pinned or locked as documented.
 
 Do not equate a passing build with a stable service or a deployment approval.
 
 ## PHP dependency graph and CI action pins (CI verified)
 
-The review branch now commits the dependency graph generated by the passing PHP 8.3 CI runner to `composer.lock` and makes the Docker build consume it. Run #42040242187 verified the lockfile-driven Docker build; run #42040456214 passed with `actions/checkout` and `shivammathur/setup-php` pinned to immutable commit SHAs. Container base-image digest pinning, OS package provenance and production release verification remain pending.
+The review branch now commits the dependency graph generated by the passing PHP 8.3 CI runner to `composer.lock` and makes the Docker build consume it. Run #42040242187 verified the lockfile-driven Docker build; run #42040456214 passed with `actions/checkout` and `shivammathur/setup-php` pinned to immutable commit SHAs. Official multi-platform Docker base-image manifest digests were subsequently pinned and their Docker build passed CI #42402563365. Debian APT package/snapshot provenance, image signatures, operational update rotation, production rollout and independent release acceptance remain open.
