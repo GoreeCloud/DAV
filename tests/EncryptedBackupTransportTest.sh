@@ -26,19 +26,12 @@ PY
 mkdir -m 0700 -- "$work/gnupg"
 head -c 48 /dev/urandom | base64 | tr -d '\n' > "$work/passphrase"
 chmod 0600 "$work/passphrase"
-tar -C "$work" -cf "$work/backup.tar" snapshot
-gpg --homedir "$work/gnupg" --batch --yes --quiet --no-tty \
-  --pinentry-mode loopback --passphrase-file "$work/passphrase" \
-  --symmetric --cipher-algo AES256 --s2k-digest-algo SHA512 \
-  --output "$work/backup.tar.gpg" "$work/backup.tar"
-[[ -s "$work/backup.tar.gpg" ]] || { echo 'Encrypted archive missing' >&2; exit 1; }
-rm -- "$work/backup.tar"
+# Encrypt tar from a pipe instead of retaining a plaintext tarball.
+tar -C "$work" -cf - snapshot | gpg --homedir "$work/gnupg" --batch --yes --quiet --no-tty --pinentry-mode loopback --passphrase-file "$work/passphrase" --symmetric --cipher-algo AES256 --s2k-digest-algo SHA512 --output "$work/backup.tar.gpg"
+[[ -s "$work/backup.tar.gpg" ]] || { echo "Encrypted archive missing" >&2; exit 1; }
 mv -- "$work/snapshot" "$work/source-quarantined"
-mkdir -m 0700 -- "$work/recovered"
-gpg --homedir "$work/gnupg" --batch --yes --quiet --no-tty \
-  --pinentry-mode loopback --passphrase-file "$work/passphrase" \
-  --decrypt --output "$work/recovered.tar" "$work/backup.tar.gpg"
-tar -C "$work/recovered" -xf "$work/recovered.tar"
+# GPG-decrypted content is staged directly from stdin into a NEW private dir.
+gpg --homedir "$work/gnupg" --batch --yes --quiet --no-tty --pinentry-mode loopback --passphrase-file "$work/passphrase" --decrypt "$work/backup.tar.gpg" | python3 bin/dav-backup-stage.py --destination "$work/recovered"
 "$PHP_BINARY" bin/dav backup:verify "$work/recovered/snapshot" --json > "$work/reverified.json"
 cmp -s "$work/source-quarantined/manifest.json" "$work/recovered/snapshot/manifest.json" || {
   echo 'Manifest differs after encryption transport' >&2; exit 1;
