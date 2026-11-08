@@ -70,6 +70,20 @@ those release gates passing.
 
 Restore rehearsals should copy the snapshot to a *disposable new* data directory, preserve owner/mode, then run `php bin/dav status --json`, SQLite integrity checks, and authenticated DAV smoke tests on a private test listener. Never restore over live files in place. An isolated CI test stages restoration at CLI level; it has passed in disposable runners; a complete production restore with representative client data and recovery point objectives is still outstanding.
 
+## Encrypted archive staging for isolated recovery
+
+The offline Python 3 standard-library utility bin/dav-backup-stage.py accepts a DECRYPTED tar stream on standard input and creates a NEW, non-symlinked private staging directory. Its parent must already exist with private (0700) permissions. Only ordinary files and directories beneath snapshot/ are accepted. Absolute paths, traversal, symlinks, hardlinks, device entries, duplicate members, oversized archives and attempts to overwrite an existing destination are rejected; any newly created partial destination is removed after failure.
+
+For a separately obtained and trusted encrypted archive, use the private operator host and the approved GPG agent. Do not put a real passphrase into command arguments, environment variables, documentation, CI, logs, or the repository. The following is schematic only:
+
+```sh
+set -o pipefail
+gpg --batch --decrypt /private/offsite/dav-backup.tar.gpg | python3 bin/dav-backup-stage.py --destination /private/stage/NEW-DAV-RESTORE
+php bin/dav backup:verify /private/stage/NEW-DAV-RESTORE/snapshot --json
+# Stop here: staging and verifying never authorize copying into live DAV_DATA_DIR.
+```
+
+Both pipeline commands and the subsequent PHP verification must succeed. The staged contents remain sensitive plaintext. The staging tool defaults to 100 GiB maximum total file payload and 200,000 archive members; size the limits for the expected archive and available private disk. It does not authenticate the archive's creator: independently protect signatures, key custody, destination storage, offsite transport and retention. The disposable CI tests exercise archive path/link/duplicate/size rejection, encrypted transport, wrong-key denial and ciphertext tampering. An operator-independent restore on a real offsite device is still unverified.
 ## Updating
 
 Review SabreDAV changelog/schema and dependency advisories; pin and review `composer.lock`, capture backups, test migrations and interoperability against supported clients, stage on private development host, and plan rollback. `init` is **not** a migration command; it refuses to overwrite any existing database.
