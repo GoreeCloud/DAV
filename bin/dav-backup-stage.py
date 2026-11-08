@@ -109,17 +109,22 @@ def main() -> int:
         parser.error("Limits must be positive")
     os.umask(0o077)
     created = None
+    complete = False
     try:
         created = create_destination(args.destination)
         members, size = stage(sys.stdin.buffer, created, args.max_bytes, args.max_members)
+        complete = True
         print(f"Unverified snapshot staged: {members} members, {size} bytes.")
         print("Next: run PHP backup:verify against the snapshot directory.")
         return 0
     except (UnsafeArchive, OSError, tarfile.TarError, EOFError, ValueError):
-        if created is not None:
-            shutil.rmtree(created)
         print("Unsafe or corrupt backup staging rejected; no partial directory retained.", file=sys.stderr)
         return 1
+    finally:
+        # Also erase partial plaintext on an interrupt or unexpected exception.
+        # A completed stage is intentionally retained for separate verification.
+        if created is not None and not complete:
+            shutil.rmtree(created)
 
 if __name__ == "__main__":
     raise SystemExit(main())
