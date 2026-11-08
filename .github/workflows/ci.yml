@@ -69,6 +69,8 @@ jobs:
         run: bash tests/QuotaHttpTest.sh
       - name: Independent whole-service backup and recovery rehearsal
         run: bash tests/FullRestoreTest.sh
+      - name: Reject malicious offline backup archive members
+        run: python3 tests/StageBackupTest.py
       - name: Disposable encrypted snapshot transport and tamper rejection
         run: bash tests/EncryptedBackupTransportTest.sh
 
