@@ -53,7 +53,10 @@ final class Config
     {
         $value = getenv('DAV_BASE_URI');
         $base = $value !== false && $value !== '' ? $value : '/';
-        if ($base[0] !== '/' || str_contains($base, '?') || str_contains($base, '#') || str_contains($base, '//') || str_contains($base, '..')) {
+        if ($base[0] !== '/' || str_contains($base, '?') || str_contains($base, '#')
+            || str_contains($base, '//') || str_contains($base, '..')
+            || str_contains($base, '\\')
+            || preg_match('/[[:cntrl:][:space:]]/', $base)) {
             throw new \RuntimeException('Invalid DAV_BASE_URI');
         }
         return rtrim($base, '/').'/';

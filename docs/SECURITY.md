@@ -6,6 +6,7 @@
 
 - No default user, password, self-signup, admin web UI, anonymous DAV file access or public shares.
 - Argon2id hashes and minimum 12-byte passwords, non-argument standard-input CLI credentials, user enable/disable and rotation.
+- Basic-credential extraction now rejects conflicting direct vs rewritten Authorization headers (matching copies remain supported); DAV_BASE_URI rejects literal controls, whitespace and backslash before it can be used in discovery redirects. These are parser defenses, not a proxy header-smuggling audit.
 - Pre-authentication before filesystem selection; per-account storage directories; guarded WebDAV file/directory nodes reject symlinks (including linked account-root ancestors), traversal, and moves outside the assigned account root, including in nested subdirectories; read-only repo container filesystem with named data volume in example Compose.
 - HTTPS enforcement defaults on, including CalDAV/CardDAV `/.well-known/` discovery redirects; the unauthenticated local GET `/healthz` probe is intentionally exempt and must remain private at the gateway. `X-Forwarded-Proto` is honored only for explicitly trusted direct proxy IPs. Containers bind to host loopback only by default.
 - Docker/Apache enforces a fixed 64 MiB request-body ceiling (including chunked transfers), plus request-read timeouts. PHP rejects oversized declared Content-Length before authentication. This is not an allocation quota, authentication brute-force defense or request rate limit.

@@ -23,6 +23,26 @@ expect(Credentials::basicCredentials(['HTTP_AUTHORIZATION' => 'Basic '.base64_en
 expect(Credentials::basicCredentials(['HTTP_AUTHORIZATION' => 'Bearer abc']) === null, 'reject bearer');
 expect(Credentials::basicCredentials(['HTTP_AUTHORIZATION' => 'Basic ?']) === null, 'reject invalid base64');
 expect(Credentials::basicCredentials(['HTTP_AUTHORIZATION' => 'Basic '.str_repeat('A', 8193)]) === null, 'reject oversized auth header');
+$aliceAuth = 'Basic '.base64_encode('alice:alice-long-test-password');
+$bobAuth = 'Basic '.base64_encode('bob:bob-long-test-password');
+expect(Credentials::basicCredentials(['REDIRECT_HTTP_AUTHORIZATION' => $aliceAuth])
+    === ['alice', 'alice-long-test-password'], 'allow rewritten auth when direct header absent');
+expect(Credentials::basicCredentials([
+    'HTTP_AUTHORIZATION' => $aliceAuth,
+    'REDIRECT_HTTP_AUTHORIZATION' => $aliceAuth,
+]) === ['alice', 'alice-long-test-password'], 'allow exactly matching duplicate carrier');
+expect(Credentials::basicCredentials([
+    'HTTP_AUTHORIZATION' => $aliceAuth,
+    'REDIRECT_HTTP_AUTHORIZATION' => $bobAuth,
+]) === null, 'reject conflicting credential sources');
+expect(Credentials::basicCredentials([
+    'HTTP_AUTHORIZATION' => $aliceAuth,
+    'REDIRECT_HTTP_AUTHORIZATION' => '',
+]) === null, 'reject empty competing credential header');
+expect(Credentials::basicCredentials([
+    'HTTP_AUTHORIZATION' => $aliceAuth,
+    'REDIRECT_HTTP_AUTHORIZATION' => ['invalid'],
+]) === null, 'reject nonstring duplicate header source');
 putenv('DAV_DATA_DIR=relative');
 try {
     Config::dataDir();
@@ -90,6 +110,17 @@ try {
     throw new RuntimeException('invalid URI was accepted');
 } catch (RuntimeException $e) {
     expect($e->getMessage() === 'Invalid DAV_BASE_URI', 'reject unsafe URI');
+}
+foreach (['/dav'.chr(13).chr(10).'Injected:1', '/dav space/', '/dav'.chr(9).'/',
+    '/dav\\\\nested/', '/dav'.chr(127).'/'] as $badBaseUri) {
+    putenv('DAV_BASE_URI='.$badBaseUri);
+    try {
+        Config::baseUri();
+        throw new RuntimeException('Unsafe DAV base URI accepted');
+    } catch (RuntimeException $e) {
+        expect($e->getMessage() === 'Invalid DAV_BASE_URI',
+            'reject ambiguous or header-unsafe DAV_BASE_URI');
+    }
 }
 putenv('DAV_BASE_URI');
 echo "Security unit tests passed.\n";
