@@ -1,0 +1,39 @@
+# Third-party dependency and schema notices
+
+GoreeCloud DAV is an original GoreeCloud integration/backend service that relies on the independently authored [sabre/dav](https://github.com/sabre-io/dav) library (including its components). The `resources/sql/001-initial.sql` schema is adapted from the SQLite examples at `sabre-io/dav` tag `4.6.0`, and retains compatibility with the PDO CalDAV/CardDAV backends. The examples and software are provided under the BSD 3-Clause license below. GoreeCloud does not claim to have created those underlying schemas or protocols.
+
+**Upstream source:** https://github.com/sabre-io/dav/tree/4.6.0/examples/sql
+
+**Upstream license and copyright:**
+
+Copyright (C) 2007-2016 fruux GmbH (https://fruux.com/).
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+    * Neither the name of SabreDAV nor the names of its contributors
+      may be used to endorse or promote products derived from this software
+      without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+    ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+    LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+    CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+    SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+    INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+    CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+    POSSIBILITY OF SUCH DAMAGE.
+
+Dependency audit and compliance checks must cover the resolved dependency graph on every release. This notice does not assign a license to first-party GoreeCloud code; owner selection is pending.
+
+The resolved PHP component names, versions and upstream source references are recorded in `composer.lock`. That record is for dependency provenance and does not replace checking each component's applicable license files and notice requirements before distribution.

@@ -1,0 +1,27 @@
+FROM composer:2@sha256:8de2184c6de224f4689e8f80ed5f5edaf0030b6b8b7839a22a2bcb6722ac87d0 AS deps
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
+
+FROM php:8.3.36-apache-bookworm@sha256:a14446c32a3c8aeb9b4dac7fb73b03dfd8006e670d9b43ea7947e4030d3cbae6
+# pdo_sqlite requires the SQLite development headers and pkg-config metadata.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-install pdo_sqlite && a2enmod rewrite headers reqtimeout \
+    && mkdir -p /var/lib/goreecloud-dav \
+    && chown www-data:www-data /var/lib/goreecloud-dav \
+    && chmod 0700 /var/lib/goreecloud-dav
+COPY --from=deps /app/vendor /var/www/html/vendor
+COPY composer.json /var/www/html/composer.json
+COPY src/ /var/www/html/src/
+COPY resources/ /var/www/html/resources/
+COPY bin/ /var/www/html/bin/
+COPY public/ /var/www/html/public/
+RUN sed -ri 's!DocumentRoot /var/www/html!DocumentRoot /var/www/html/public!g' /etc/apache2/sites-available/000-default.conf \
+    && printf 'ServerTokens Prod\nServerSignature Off\nRequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500\n<Directory /var/www/html/public>\nAllowOverride All\nLimitRequestBody 67108864\nRequire all granted\n</Directory>\n' > /etc/apache2/conf-available/goreecloud-dav.conf \
+    && a2enconf goreecloud-dav \
+    && printf 'SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1\n' > /etc/apache2/conf-available/goreecloud-dav-authorization.conf \
+    && a2enconf goreecloud-dav-authorization
+ENV DAV_DATA_DIR=/var/lib/goreecloud-dav DAV_BASE_URI=/ DAV_REQUIRE_HTTPS=1
+EXPOSE 80

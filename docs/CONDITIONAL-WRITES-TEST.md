@@ -1,0 +1,7 @@
+# CalDAV, CardDAV, WebDAV conditional-write regression
+
+**Status:** CI-only synthetic test. Run `bash tests/ConditionalWritesTest.sh` from a checkout with the pinned PHP dependencies, PHP CLI with SQLite and curl. The script creates a **loopback-only** temporary HTTP DAV service and disposable Alice/Bob accounts. HTTP rather than HTTPS is allowed only inside the local test environment.
+
+For an event, contact and WebDAV file, the test creates a resource using `If-None-Match: *`, fetches a strong ETag, writes a second version, then attempts to upload or delete using the old ETag. Both stale operations must return HTTP **412 Precondition Failed**, leaving the second version intact. Duplicate create-only PUT must also return 412. Updating with the current `If-Match` ETag must succeed, advance the ETag and preserve the new bytes; deleting with the current ETag must succeed. The test checks account separation. No real user records or public endpoint are involved.
+
+**Limitations:** This checks HTTP precondition semantics in disposable CI; it is not a multi-device conflict-resolution UI, a load/concurrency stress test, a guarantee against noncooperating filesystem writers, a solution for sync-token retention or evidence of real-device compatibility. Clients still need to explicitly send conditional headers and handle HTTP 412 without discarding users' local edits. See [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md) and [SECURITY.md](SECURITY.md).

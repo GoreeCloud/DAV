@@ -1,2 +1,67 @@
-# DAV
-GoreeCloud back-end for CalDAV, CardDAV, and WebDav.
+# GoreeCloud DAV
+
+**Status: experimental, not deployed or production-validated.** GoreeCloud DAV is the independently operated, standards-based back-end intended for GoreeCloud Calendar, Contacts, Tasks, Files, and other authorized clients. It supports CalDAV, CardDAV and WebDAV over one HTTP(S) service. It is a first-party integration and operations layer over [sabre/dav](https://github.com/sabre-io/dav), not a claim that GoreeCloud authored the protocol engine.
+
+## Features present in source
+
+- CalDAV calendar, event, recurrence and task protocol processing supplied by SabreDAV's CalDAV stack; CardDAV contacts and address books supplied by its CardDAV stack.
+- WebDAV file handling under a per-authenticated-account `/files/` root with guarded nested directory/file nodes that reject path escapes and symlinks **including linked ancestor paths**; GoreeCloud uses SHA-256 content-based file ETags to prevent stale validators after same-sized rewrites. DAV locks and conditional operations are supplied by the framework.
+- SQLite credential registry with separate per-account DAV metadata databases, a local administrator CLI and checksum-checked snapshot backups, Argon2id password hashes, no default users, per-user storage isolation, TLS enforcement, and reverse-proxy awareness limited to a trusted IP allowlist.
+- Container build, loopback-only example Compose configuration, health probe, CI checks, and integration/operations/security docs.
+- The Docker/Apache image rejects request bodies over **64 MiB** (including chunked uploads) and enforces request-read timeouts. This is a fixed safety ceiling, not a per-user quota or production rate limit. Failed account provisioning now cleans up SQLite database files inside the new account metadata directory, with a regression test.
+
+**CI verified on the experimental review branch (November 5, 2026):** PHP/Composer dependency audit, account provisioning and credential lifecycle, CalDAV/CardDAV event/contact HTTP CRUD, WebDAV file/MKCOL/MOVE/COPY/LOCK/UNLOCK, conditional ETags, synchronization reports, symlink denial and tenant isolation; disposable Docker/Apache startup, simulated trusted-proxy behavior and the PHP/SQLite snapshot commands. A separate WAL-mode SQLite recovery rehearsal passed. These CI checks are **not** production TLS, off-site recovery, or independent DAV client interoperability.
+
+**Additional release-hardening controls verified in disposable GitHub Actions #42039073000:** the Docker image now applies a fixed 64 MiB request body ceiling and Apache request-read timeouts, with a PHP early rejection of declared oversize bodies. The Docker test rejected a 65 MiB upload with HTTP 413 without creating a resource, and the PHP unit tests passed. See the draft PR for the latest CI run.
+
+## Quick start (local isolated test only)
+
+Prerequisites: PHP 8.3+, Composer 2, PHP SQLite/DOM extensions. Production should use TLS termination, private networking and tested backups. The container example binds only to loopback. **Do not expose port 8787 to the public internet.**
+
+```sh
+composer install --no-interaction --prefer-dist --no-scripts
+export DAV_DATA_DIR="$PWD/var"
+php bin/dav init
+printf '%s\n' 'put-a-long-unique-test-password-here' | php bin/dav user:add alice --password-stdin
+php bin/dav status --json
+```
+
+For a local-only HTTP development test, set `DAV_REQUIRE_HTTPS=0` in a shell **only on a private test machine** and serve the `public/` directory using a supported PHP webserver. Do not send real credentials or personal data over plain HTTP. Production should use a hardened TLS reverse proxy; see [Operations](docs/OPERATIONS.md).
+
+## Client contract
+
+Assuming an assigned backend host, such as `https://dav.example.invalid/` (illustrative, **not a deployed hostname**):
+
+| Purpose | URL template |
+| --- | --- |
+| CalDAV discovery | `/.well-known/caldav` -> `/` |
+| CardDAV discovery | `/.well-known/carddav` -> `/` |
+| Principal | `/principals/{username}/` |
+| Calendar | `/calendars/{username}/default/` |
+| Address book | `/addressbooks/{username}/default/` |
+| Personal files | `/files/` (scoped to the authenticated user) |
+| Health probe | `/healthz` (no credentials, no private data) |
+
+All DAV resources except the health probe and redirects require Basic credentials sent **only over HTTPS**. The `/files/` namespace is intentionally per-authenticated-user, not a shared public repository. Frontends may be separate applications and should use established DAV client libraries; do not assume JSON REST endpoints are present. Read [Client integration](docs/CLIENT-INTEGRATION.md) and [Security](docs/SECURITY.md).
+
+## Operator CLI
+
+`php bin/dav help` documents `init`, `status`, `user:add`, `user:rotate`, `user:disable`, `user:enable`, `user:list`, `backup:create`, and `backup:verify`. The snapshot uses SQLite `VACUUM INTO`, a versioned manifest of file checksums and empty directories, a non-symlinked destination-parent requirement, and a shared/exclusive cooperative lock; it is not an offsite encrypted backup or a tested production restore. User secrets are accepted via standard input only. Run administrative commands as the data-directory owner, **never through a public HTTP endpoint**.
+
+## Architecture and limitations
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Operations, deployment and recovery](docs/OPERATIONS.md)
+- [Security, threat model and release gates](docs/SECURITY.md)
+- [Client integration contract](docs/CLIENT-INTEGRATION.md)
+- [Planned features and acceptance gates](docs/ROADMAP.md)
+
+This repo is public; **never commit real contact records, calendar data, passwords, tokens, certificates, database files, or infrastructure secrets**. The `.gitignore` is defense in depth, not an excuse to store secrets in the checkout.
+
+## Dependency provenance
+
+Protocol engine: `sabre/dav` v4.6 series, BSD-3-Clause licensed upstream; a pinned adapted SQLite schema derived from upstream examples is attributed in `docs/THIRD-PARTY-NOTICES.md`, and demo accounts are not seeded. The committed `composer.lock` now pins the resolved PHP dependency graph from the verified PHP 8.3 CI runner; the Docker build installs exactly those package versions. This does **not** pin container base-image digests, the Composer tool image or external OS packages. Review upstream licensing, advisories, and transitive dependencies before releases. The application code and docs are GoreeCloud-maintained. License choice for the GoreeCloud-owned code is pending the founder's explicit open-source licensing decision; public source visibility does not itself grant redistribution rights.
+
+## Remaining release gates
+
+The service is experimental: real private TLS reverse-proxy/certificate tests, gateway request-rate limits, per-account quotas, digest-pinned container images, representative client interoperability, encrypted independent restore/rollback rehearsal, and a security review are still required. The disposable Docker smoke test only simulates a trusted TLS-terminating proxy; its result does not authorize any public endpoint or production deployment.

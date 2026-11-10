@@ -1,0 +1,30 @@
+services:
+  dav:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:80"
+    environment:
+      DAV_DATA_DIR: /var/lib/goreecloud-dav
+      DAV_BASE_URI: /
+      DAV_REQUIRE_HTTPS: "1"
+      DAV_TRUSTED_PROXIES: "${DAV_TRUSTED_PROXIES:-}"
+      DAV_ACCOUNT_FILE_QUOTA_BYTES: "${DAV_ACCOUNT_FILE_QUOTA_BYTES:-}"
+    volumes:
+      - dav_data:/var/lib/goreecloud-dav
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run/apache2:rw,nosuid,size=8m
+      - /var/lock/apache2:rw,nosuid,size=8m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+
+volumes:
+  dav_data:
