@@ -102,6 +102,18 @@ try {
 putenv('DAV_DATA_DIR');
 expect(!Config::isSecure(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_PROTO' => 'https']), 'do not trust arbitrary proxy headers');
 expect(Config::isSecure(['HTTPS' => 'on']), 'recognize direct TLS');
+putenv('DAV_TRUSTED_PROXIES=127.0.0.1');
+expect(Config::isSecure(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_PROTO' => 'https']),
+    'accept exact HTTPS signal from configured private proxy');
+foreach (['https,http', 'http,https', 'https ', 'https'.chr(10).'http'] as $spoofedProto) {
+    expect(!Config::isSecure(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_PROTO' => $spoofedProto]),
+        'reject ambiguous or noncanonical proxy protocol header');
+}
+expect(!Config::isSecure(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_PROTO' => ['https']]),
+    'reject malformed non-string proxy protocol');
+expect(!Config::isSecure(['REMOTE_ADDR' => '203.0.113.1', 'HTTP_X_FORWARDED_PROTO' => 'https']),
+    'reject forwarded HTTPS supplied by an untrusted peer');
+putenv('DAV_TRUSTED_PROXIES');
 putenv('DAV_BASE_URI=/dav/');
 expect(Config::baseUri() === '/dav/', 'base URI');
 putenv('DAV_BASE_URI=//evil');
@@ -112,7 +124,9 @@ try {
     expect($e->getMessage() === 'Invalid DAV_BASE_URI', 'reject unsafe URI');
 }
 foreach (['/dav'.chr(13).chr(10).'Injected:1', '/dav space/', '/dav'.chr(9).'/',
-    '/dav\\\\nested/', '/dav'.chr(127).'/'] as $badBaseUri) {
+    '/dav\\\\nested/', '/dav'.chr(127).'/', '/dav/%2e%2e/', '/dav/%2Fprivate/',
+    '/dav/%5cprivate/', '/dav/%0d%0aHeader:', '/dav/%252e%252e/',
+    '/dav/%41/', '/dav/100%/', '/dav/%00/'] as $badBaseUri) {
     putenv('DAV_BASE_URI='.$badBaseUri);
     try {
         Config::baseUri();
