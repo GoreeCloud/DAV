@@ -55,7 +55,7 @@ final class Config
         $base = $value !== false && $value !== '' ? $value : '/';
         if ($base[0] !== '/' || str_contains($base, '?') || str_contains($base, '#')
             || str_contains($base, '//') || str_contains($base, '..')
-            || str_contains($base, '\\')
+            || str_contains($base, '\\') || str_contains($base, '%')
             || preg_match('/[[:cntrl:][:space:]]/', $base)) {
             throw new \RuntimeException('Invalid DAV_BASE_URI');
         }
@@ -69,7 +69,10 @@ final class Config
         }
         $proxies = array_filter(array_map('trim', explode(',', getenv('DAV_TRUSTED_PROXIES') ?: '')));
         if (in_array($server['REMOTE_ADDR'] ?? '', $proxies, true)) {
-            return strtolower((string) ($server['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+            $forwarded = $server['HTTP_X_FORWARDED_PROTO'] ?? null;
+            // Only accept one exact protocol token. Reject malformed arrays
+            // and comma-separated multi-proxy values instead of casting them.
+            return is_string($forwarded) && strtolower($forwarded) === 'https';
         }
         return false;
     }
