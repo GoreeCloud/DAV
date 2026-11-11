@@ -177,6 +177,13 @@ for collection in "$base/calendars/alice/default/" "$base/addressbooks/alice/def
     --data-binary @"$work/sync.xml" "$collection")" 207 'DAV sync-collection REPORT'
   grep -q 'sync-token' "$work/response"
 done
+# A non-owner must not obtain a change feed or sync token from a foreign
+# calendar/address book, even when the request body is a valid REPORT.
+for kind in calendars addressbooks; do
+  deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X REPORT \
+    -H 'Content-Type: application/xml' --data-binary @"$work/sync.xml" \
+    "$base/$kind/alice/default/")" "Bob REPORT Alice $kind"
+done
 
 # A user cannot rename or delete the mounted WebDAV account root.
 root_delete="$(status -u 'alice:alice-test-password-12345' -X DELETE "$base/files/")"
