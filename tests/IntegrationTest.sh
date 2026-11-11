@@ -93,7 +93,10 @@ v4_code="$(status -u 'alice:alice-test-password-12345' -X PUT \
 if [[ "$v4_code" != 201 && "$v4_code" != 204 ]]; then
   expect "$v4_code" 201 'CardDAV vCard 4 PUT'
 fi
-expect "$(status -u 'alice:alice-test-password-12345' "$contact_v4_url")" 200 'CardDAV vCard 4 GET'
+# SabreDAV negotiates an unqualified GET down to vCard 3.0 for legacy
+# clients. Explicitly request 4.0 to test source-preserving vCard4 delivery.
+expect "$(status -u 'alice:alice-test-password-12345' \
+  -H 'Accept: text/vcard; version=4.0' "$contact_v4_url")" 200 'CardDAV negotiated vCard 4 GET'
 for expected in 'VERSION:4.0' 'EMAIL;TYPE=home:home@example.invalid' \
     'EMAIL;TYPE=work:work@example.invalid' 'X-GOREECLOUD-TEST:opaque-synthetic-property'; do
   if ! grep -Fiq "$expected" "$work/response"; then
@@ -104,6 +107,12 @@ for expected in 'VERSION:4.0' 'EMAIL;TYPE=home:home@example.invalid' \
     exit 1
   fi
 done
+# Unqualified GET deliberately serves a compatible vCard 3.0 representation.
+# It must still retain the synthetic contact identity and custom property.
+expect "$(status -u 'alice:alice-test-password-12345' "$contact_v4_url")" 200 'CardDAV default legacy vCard GET'
+grep -q '^VERSION:3.0' "$work/response"
+grep -q '^UID:urn:uuid:22222222-2222-4222-8222-222222222222' "$work/response"
+grep -q '^X-GOREECLOUD-TEST:opaque-synthetic-property' "$work/response"
 
 # Accounts get distinct physical WebDAV roots despite the same /files URL.
 printf 'confidential-test-content' >"$work/payload.txt"
