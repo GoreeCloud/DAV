@@ -186,6 +186,48 @@ grep -q '^SUMMARY:Example Calendar Event' "$work/response"
 expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'Alice contact survived Bob writes'
 grep -q '^FN:Example Contact' "$work/response"
 
+# Explicit, synthetic GoreeCloud Tasks VTODO preview contract: CalDAV must store
+# and return this iCalendar task without losing its core fields. This does NOT
+# import real tasks, enable cross-product sync, or exercise production credentials.
+cat >"$work/task.ics" <<'TASKICS'
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GoreeCloud Tasks//VTODO Preview//EN
+BEGIN:VTODO
+UID:urn:uuid:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+DTSTAMP:20261111T120000Z
+SEQUENCE:0
+CLASS:PRIVATE
+STATUS:NEEDS-ACTION
+SUMMARY:Synthetic DAV Task Preview
+DUE;VALUE=DATE:20261112
+END:VTODO
+END:VCALENDAR
+TASKICS
+task_url="$base/calendars/alice/default/synthetic-task.ics"
+task_code="$(status -u 'alice:alice-test-password-12345' -X PUT \
+  -H 'Content-Type: text/calendar; charset=utf-8' \
+  --data-binary @"$work/task.ics" "$task_url")"
+if [[ "$task_code" != 201 && "$task_code" != 204 ]]; then
+  expect "$task_code" 201 'CalDAV VTODO task PUT'
+fi
+expect "$(status -u 'alice:alice-test-password-12345' "$task_url")" 200 'CalDAV VTODO task GET'
+for task_field in 'BEGIN:VTODO' 'UID:urn:uuid:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' \
+  'CLASS:PRIVATE' 'STATUS:NEEDS-ACTION' \
+  'SUMMARY:Synthetic DAV Task Preview' 'DUE;VALUE=DATE:20261112'; do
+  if ! grep -Fqx "$task_field" "$work/response"; then
+    printf 'CalDAV VTODO round-trip lost a synthetic field: %s\n' "$task_field" >&2
+    exit 1
+  fi
+done
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' "$task_url")" 'Bob GET Alice VTODO'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT \
+  -H 'Content-Type: text/calendar; charset=utf-8' \
+  --data-binary @"$work/task.ics" "$task_url")" 'Bob overwrite Alice VTODO'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$task_url")" 'Bob DELETE Alice VTODO'
+expect "$(status -u 'alice:alice-test-password-12345' "$task_url")" 200 'Alice VTODO survives unauthorized writes'
+grep -Fqx 'SUMMARY:Synthetic DAV Task Preview' "$work/response"
+
 # The second account also functions normally within its OWN CalDAV/CardDAV
 # collections, proving the negative checks do not just deny a broken account.
 sed 's/Example Calendar Event/Bob Owned Calendar Event/' "$work/event.ics" >"$work/bob-event.ics"
