@@ -175,6 +175,12 @@ deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content
   --data-binary @"$work/contact.vcf" "$contact_url")" 'Bob overwrite Alice contact'
 deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$calendar_url")" 'Bob delete Alice event'
 deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$contact_url")" 'Bob delete Alice contact'
+# The negotiated vCard4 representation must enforce the same tenant boundary.
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -H 'Accept: text/vcard; version=4.0' "$contact_v4_url")" 'Bob GET Alice vCard4'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/vcard; charset=utf-8' --data-binary @"$work/contact-v4.vcf" "$contact_v4_url")" 'Bob overwrite Alice vCard4'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$contact_v4_url")" 'Bob delete Alice vCard4'
+expect "$(status -u 'alice:alice-test-password-12345' -H 'Accept: text/vcard; version=4.0' "$contact_v4_url")" 200 'Alice vCard4 survived unauthorized operations'
+grep -q '^X-GOREECLOUD-TEST:opaque-synthetic-property' "$work/response"
 expect "$(status -u 'alice:alice-test-password-12345' "$calendar_url")" 200 'Alice event survived Bob writes'
 grep -q '^SUMMARY:Example Calendar Event' "$work/response"
 expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'Alice contact survived Bob writes'
