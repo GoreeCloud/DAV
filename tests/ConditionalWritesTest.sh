@@ -138,6 +138,28 @@ check_conditional_writes 'CardDAV contact' "$base/addressbooks/alice/default/con
   'text/vcard; charset=utf-8' "$work/card-a.vcf" "$work/card-b.vcf" "$work/card-c.vcf" \
   'FN:Second-CI-Contact' 'FN:Final-CI-Contact'
 
+# Exercise the same stale-ETag denial with a vCard 4.0 representation that
+# includes two email values and an unknown X-property. Earlier integration
+# checks also verify explicit Accept: text/vcard; version=4.0 negotiation.
+# Every resource and address is synthetic; no real contacts are imported.
+cat >"$work/card4-a.vcf" <<'VCARD4'
+BEGIN:VCARD
+VERSION:4.0
+UID:urn:uuid:66666666-6666-4666-8666-666666666666
+FN:Initial-CI-Contact4
+N:Contact4;Initial;;;
+EMAIL;TYPE=home:home@example.invalid
+EMAIL;TYPE=work:work@example.invalid
+X-GOREECLOUD-TEST:synthetic-opaque-value
+END:VCARD
+VCARD4
+sed 's/Initial-CI-Contact4/Second-CI-Contact4/' "$work/card4-a.vcf" >"$work/card4-b.vcf"
+sed 's/Initial-CI-Contact4/Final-CI-Contact4/' "$work/card4-a.vcf" >"$work/card4-c.vcf"
+check_conditional_writes 'CardDAV vCard4 contact' \
+  "$base/addressbooks/alice/default/conditional-v4.vcf" \
+  'text/vcard; charset=utf-8' "$work/card4-a.vcf" "$work/card4-b.vcf" "$work/card4-c.vcf" \
+  'FN:Second-CI-Contact4' 'FN:Final-CI-Contact4'
+
 printf 'Initial-CI-File\n' >"$work/file-a"
 printf 'Second-CI-File\n' >"$work/file-b"
 printf 'Final-CI-File\n' >"$work/file-c"
