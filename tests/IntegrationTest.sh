@@ -74,6 +74,46 @@ if [[ "$contact_code" != 201 && "$contact_code" != 204 ]]; then expect "$contact
 expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'CardDAV contact GET'
 grep -q 'FN:Example Contact' "$work/response"
 
+# A separately versioned vCard 4 resource must retain multiple typed emails
+# and an unrecognized X-property. All fixture domains are deliberately invalid.
+cat >"$work/contact-v4.vcf" <<'VCARD4'
+BEGIN:VCARD
+VERSION:4.0
+FN:Example Four Contact
+N:Contact;Example;;;
+UID:urn:uuid:22222222-2222-4222-8222-222222222222
+EMAIL;TYPE=home:home@example.invalid
+EMAIL;TYPE=work:work@example.invalid
+X-GOREECLOUD-TEST:opaque-synthetic-property
+END:VCARD
+VCARD4
+contact_v4_url="$base/addressbooks/alice/default/test-v4.vcf"
+v4_code="$(status -u 'alice:alice-test-password-12345' -X PUT \
+  -H 'Content-Type: text/vcard; charset=utf-8' --data-binary @"$work/contact-v4.vcf" "$contact_v4_url")"
+if [[ "$v4_code" != 201 && "$v4_code" != 204 ]]; then
+  expect "$v4_code" 201 'CardDAV vCard 4 PUT'
+fi
+# SabreDAV negotiates an unqualified GET down to vCard 3.0 for legacy
+# clients. Explicitly request 4.0 to test source-preserving vCard4 delivery.
+expect "$(status -u 'alice:alice-test-password-12345' \
+  -H 'Accept: text/vcard; version=4.0' "$contact_v4_url")" 200 'CardDAV negotiated vCard 4 GET'
+for expected in 'VERSION:4.0' 'EMAIL;TYPE=home:home@example.invalid' \
+    'EMAIL;TYPE=work:work@example.invalid' 'X-GOREECLOUD-TEST:opaque-synthetic-property'; do
+  if ! grep -Fiq "$expected" "$work/response"; then
+    printf 'vCard4 synthetic round-trip lost or changed expected field: %s\n' "$expected" >&2
+    # This fixture contains only example.invalid data and a synthetic property.
+    # Never use such response dumping with real users or production logs.
+    sed -n '1,24p' "$work/response" >&2
+    exit 1
+  fi
+done
+# Unqualified GET deliberately serves a compatible vCard 3.0 representation.
+# It must still retain the synthetic contact identity and custom property.
+expect "$(status -u 'alice:alice-test-password-12345' "$contact_v4_url")" 200 'CardDAV default legacy vCard GET'
+grep -q '^VERSION:3.0' "$work/response"
+grep -q '^UID:urn:uuid:22222222-2222-4222-8222-222222222222' "$work/response"
+grep -q '^X-GOREECLOUD-TEST:opaque-synthetic-property' "$work/response"
+
 # Accounts get distinct physical WebDAV roots despite the same /files URL.
 printf 'confidential-test-content' >"$work/payload.txt"
 file_url="$base/files/account-separation.txt"
@@ -119,6 +159,56 @@ for kind in calendars addressbooks; do
   fi
 done
 
+# Cross-account security must cover resource-level GET, writes and deletes,
+# not merely collection PROPFIND or different /files/ mounts.
+deny_tenant_access() {
+  if [[ "$1" != 403 && "$1" != 404 ]]; then
+    printf 'Expected tenant denial (403/404) for %s; got HTTP %s\n' "$2" "$1" >&2
+    exit 1
+  fi
+}
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' "$calendar_url")" 'Bob GET Alice event'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' "$contact_url")" 'Bob GET Alice contact'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/calendar' \
+  --data-binary @"$work/event.ics" "$calendar_url")" 'Bob overwrite Alice event'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/vcard' \
+  --data-binary @"$work/contact.vcf" "$contact_url")" 'Bob overwrite Alice contact'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$calendar_url")" 'Bob delete Alice event'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$contact_url")" 'Bob delete Alice contact'
+# The negotiated vCard4 representation must enforce the same tenant boundary.
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -H 'Accept: text/vcard; version=4.0' "$contact_v4_url")" 'Bob GET Alice vCard4'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/vcard; charset=utf-8' --data-binary @"$work/contact-v4.vcf" "$contact_v4_url")" 'Bob overwrite Alice vCard4'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$contact_v4_url")" 'Bob delete Alice vCard4'
+expect "$(status -u 'alice:alice-test-password-12345' -H 'Accept: text/vcard; version=4.0' "$contact_v4_url")" 200 'Alice vCard4 survived unauthorized operations'
+grep -q '^X-GOREECLOUD-TEST:opaque-synthetic-property' "$work/response"
+expect "$(status -u 'alice:alice-test-password-12345' "$calendar_url")" 200 'Alice event survived Bob writes'
+grep -q '^SUMMARY:Example Calendar Event' "$work/response"
+expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'Alice contact survived Bob writes'
+grep -q '^FN:Example Contact' "$work/response"
+
+# The second account also functions normally within its OWN CalDAV/CardDAV
+# collections, proving the negative checks do not just deny a broken account.
+sed 's/Example Calendar Event/Bob Owned Calendar Event/' "$work/event.ics" >"$work/bob-event.ics"
+sed 's/Example Contact/Bob Owned Contact/' "$work/contact.vcf" >"$work/bob-contact.vcf"
+bob_calendar_url="$base/calendars/bob/default/bob-event.ics"
+bob_contact_url="$base/addressbooks/bob/default/bob-contact.vcf"
+bob_event_code="$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/calendar' \
+  --data-binary @"$work/bob-event.ics" "$bob_calendar_url")"
+if [[ "$bob_event_code" != 201 && "$bob_event_code" != 204 ]]; then
+  expect "$bob_event_code" 201 'Bob CalDAV own event PUT'
+fi
+bob_contact_code="$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/vcard' \
+  --data-binary @"$work/bob-contact.vcf" "$bob_contact_url")"
+if [[ "$bob_contact_code" != 201 && "$bob_contact_code" != 204 ]]; then
+  expect "$bob_contact_code" 201 'Bob CardDAV own contact PUT'
+fi
+expect "$(status -u 'bob:bob-test-password-67890' "$bob_calendar_url")" 200 'Bob reads own event'
+grep -q '^SUMMARY:Bob Owned Calendar Event' "$work/response"
+expect "$(status -u 'bob:bob-test-password-67890' "$bob_contact_url")" 200 'Bob reads own contact'
+grep -q '^FN:Bob Owned Contact' "$work/response"
+deny_tenant_access "$(status -u 'alice:alice-test-password-12345' "$bob_calendar_url")" 'Alice GET Bob event'
+deny_tenant_access "$(status -u 'alice:alice-test-password-12345' "$bob_contact_url")" 'Alice GET Bob contact'
+
 # Verify resource deletion and change-token REPORT semantics, including real stored objects.
 cat >"$work/sync.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -132,6 +222,13 @@ for collection in "$base/calendars/alice/default/" "$base/addressbooks/alice/def
   expect "$(status -u 'alice:alice-test-password-12345' -X REPORT -H 'Content-Type: application/xml' \
     --data-binary @"$work/sync.xml" "$collection")" 207 'DAV sync-collection REPORT'
   grep -q 'sync-token' "$work/response"
+done
+# A non-owner must not obtain a change feed or sync token from a foreign
+# calendar/address book, even when the request body is a valid REPORT.
+for kind in calendars addressbooks; do
+  deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X REPORT \
+    -H 'Content-Type: application/xml' --data-binary @"$work/sync.xml" \
+    "$base/$kind/alice/default/")" "Bob REPORT Alice $kind"
 done
 
 # A user cannot rename or delete the mounted WebDAV account root.
