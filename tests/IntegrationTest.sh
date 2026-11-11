@@ -228,6 +228,42 @@ deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$task_u
 expect "$(status -u 'alice:alice-test-password-12345' "$task_url")" 200 'Alice VTODO survives unauthorized writes'
 grep -Fqx 'SUMMARY:Synthetic DAV Task Preview' "$work/response"
 
+# CardDAV clients use addressbook-multiget REPORT to retrieve selected cards.
+# A foreign href submitted against Bob's own collection must never disclose
+# Alice's vCard data, even if the server returns a 207 Multi-Status.
+cat >"$work/contact-multiget.xml" <<'CARDREPORT'
+<?xml version="1.0" encoding="UTF-8"?>
+<C:addressbook-multiget xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:prop><D:getetag/><C:address-data/></D:prop>
+  <D:href>/addressbooks/alice/default/test.vcf</D:href>
+</C:addressbook-multiget>
+CARDREPORT
+expect "$(status -u 'alice:alice-test-password-12345' -X REPORT \
+  -H 'Content-Type: application/xml; charset=utf-8' \
+  --data-binary @"$work/contact-multiget.xml" \
+  "$base/addressbooks/alice/default/")" 207 'Alice CardDAV multiget REPORT'
+if ! grep -Fq 'FN:Example Contact' "$work/response"; then
+  echo 'Authorized CardDAV multiget omitted the synthetic contact' >&2
+  exit 1
+fi
+bob_multiget_code="$(status -u 'bob:bob-test-password-67890' -X REPORT \
+  -H 'Content-Type: application/xml; charset=utf-8' \
+  --data-binary @"$work/contact-multiget.xml" \
+  "$base/addressbooks/bob/default/")"
+if [[ "$bob_multiget_code" != 207 && "$bob_multiget_code" != 403 && "$bob_multiget_code" != 404 ]]; then
+  printf 'Unexpected CardDAV foreign multiget status: %s\n' "$bob_multiget_code" >&2
+  exit 1
+fi
+if grep -Fq 'FN:Example Contact' "$work/response" \
+  || grep -Fq '11111111-1111-4111-8111-111111111111' "$work/response"; then
+  echo 'CardDAV foreign multiget disclosed a private synthetic contact' >&2
+  exit 1
+fi
+if [[ "$bob_multiget_code" == 207 ]] && ! grep -Eq '403|404' "$work/response"; then
+  echo 'CardDAV multiget returned no per-resource denial for foreign href' >&2
+  exit 1
+fi
+
 # The second account also functions normally within its OWN CalDAV/CardDAV
 # collections, proving the negative checks do not just deny a broken account.
 sed 's/Example Calendar Event/Bob Owned Calendar Event/' "$work/event.ics" >"$work/bob-event.ics"
