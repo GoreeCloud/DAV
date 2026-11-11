@@ -287,6 +287,45 @@ grep -q '^FN:Bob Owned Contact' "$work/response"
 deny_tenant_access "$(status -u 'alice:alice-test-password-12345' "$bob_calendar_url")" 'Alice GET Bob event'
 deny_tenant_access "$(status -u 'alice:alice-test-password-12345' "$bob_contact_url")" 'Alice GET Bob contact'
 
+# CardDAV addressbook-query REPORT must remain scoped to the requested
+# account's own collection. A successful response may contain card data but
+# must never include another principal's synthetic private contact.
+cat >"$work/addressbook-query.xml" <<'ADDRESSBOOKQUERY'
+<?xml version="1.0" encoding="UTF-8"?>
+<C:addressbook-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:prop><D:getetag/><C:address-data/></D:prop>
+</C:addressbook-query>
+ADDRESSBOOKQUERY
+expect "$(status -u 'alice:alice-test-password-12345' -X REPORT \
+  -H 'Content-Type: application/xml; charset=utf-8' \
+  -H 'Depth: 1' --data-binary @"$work/addressbook-query.xml" \
+  "$base/addressbooks/alice/default/")" 207 'Alice CardDAV addressbook-query'
+if ! grep -Fq 'FN:Example Contact' "$work/response"; then
+  echo 'Alice CardDAV query omitted her own synthetic contact' >&2
+  exit 1
+fi
+if grep -Fq 'FN:Bob Owned Contact' "$work/response"; then
+  echo 'Alice CardDAV query disclosed Bob synthetic contact' >&2
+  exit 1
+fi
+expect "$(status -u 'bob:bob-test-password-67890' -X REPORT \
+  -H 'Content-Type: application/xml; charset=utf-8' \
+  -H 'Depth: 1' --data-binary @"$work/addressbook-query.xml" \
+  "$base/addressbooks/bob/default/")" 207 'Bob CardDAV addressbook-query'
+if ! grep -Fq 'FN:Bob Owned Contact' "$work/response"; then
+  echo 'Bob CardDAV query omitted his own synthetic contact' >&2
+  exit 1
+fi
+if grep -Fq 'FN:Example Contact' "$work/response" \
+  || grep -Fq 'FN:Example Four Contact' "$work/response"; then
+  echo 'Bob CardDAV query disclosed Alice synthetic contact' >&2
+  exit 1
+fi
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X REPORT \
+  -H 'Content-Type: application/xml; charset=utf-8' \
+  --data-binary @"$work/addressbook-query.xml" \
+  "$base/addressbooks/alice/default/")" 'Bob foreign CardDAV addressbook-query'
+
 # Verify resource deletion and change-token REPORT semantics, including real stored objects.
 cat >"$work/sync.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
