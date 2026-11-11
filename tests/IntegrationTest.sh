@@ -74,6 +74,31 @@ if [[ "$contact_code" != 201 && "$contact_code" != 204 ]]; then expect "$contact
 expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'CardDAV contact GET'
 grep -q 'FN:Example Contact' "$work/response"
 
+# A separately versioned vCard 4 resource must retain multiple typed emails
+# and an unrecognized X-property. All fixture domains are deliberately invalid.
+cat >"$work/contact-v4.vcf" <<'VCARD4'
+BEGIN:VCARD
+VERSION:4.0
+FN:Example Four Contact
+N:Contact;Example;;;
+UID:urn:uuid:22222222-2222-4222-8222-222222222222
+EMAIL;TYPE=home:home@example.invalid
+EMAIL;TYPE=work:work@example.invalid
+X-GOREECLOUD-TEST:opaque-synthetic-property
+END:VCARD
+VCARD4
+contact_v4_url="$base/addressbooks/alice/default/test-v4.vcf"
+v4_code="$(status -u 'alice:alice-test-password-12345' -X PUT \
+  -H 'Content-Type: text/vcard; charset=utf-8' --data-binary @"$work/contact-v4.vcf" "$contact_v4_url")"
+if [[ "$v4_code" != 201 && "$v4_code" != 204 ]]; then
+  expect "$v4_code" 201 'CardDAV vCard 4 PUT'
+fi
+expect "$(status -u 'alice:alice-test-password-12345' "$contact_v4_url")" 200 'CardDAV vCard 4 GET'
+grep -q '^VERSION:4.0' "$work/response"
+grep -q '^EMAIL;TYPE=home:home@example.invalid' "$work/response"
+grep -q '^EMAIL;TYPE=work:work@example.invalid' "$work/response"
+grep -q '^X-GOREECLOUD-TEST:opaque-synthetic-property' "$work/response"
+
 # Accounts get distinct physical WebDAV roots despite the same /files URL.
 printf 'confidential-test-content' >"$work/payload.txt"
 file_url="$base/files/account-separation.txt"
