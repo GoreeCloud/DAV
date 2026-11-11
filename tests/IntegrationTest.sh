@@ -119,6 +119,50 @@ for kind in calendars addressbooks; do
   fi
 done
 
+# Cross-account security must cover resource-level GET, writes and deletes,
+# not merely collection PROPFIND or different /files/ mounts.
+deny_tenant_access() {
+  if [[ "$1" != 403 && "$1" != 404 ]]; then
+    printf 'Expected tenant denial (403/404) for %s; got HTTP %s\n' "$2" "$1" >&2
+    exit 1
+  fi
+}
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' "$calendar_url")" 'Bob GET Alice event'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' "$contact_url")" 'Bob GET Alice contact'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/calendar' \
+  --data-binary @"$work/event.ics" "$calendar_url")" 'Bob overwrite Alice event'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/vcard' \
+  --data-binary @"$work/contact.vcf" "$contact_url")" 'Bob overwrite Alice contact'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$calendar_url")" 'Bob delete Alice event'
+deny_tenant_access "$(status -u 'bob:bob-test-password-67890' -X DELETE "$contact_url")" 'Bob delete Alice contact'
+expect "$(status -u 'alice:alice-test-password-12345' "$calendar_url")" 200 'Alice event survived Bob writes'
+grep -q '^SUMMARY:Example Calendar Event' "$work/response"
+expect "$(status -u 'alice:alice-test-password-12345' "$contact_url")" 200 'Alice contact survived Bob writes'
+grep -q '^FN:Example Contact' "$work/response"
+
+# The second account also functions normally within its OWN CalDAV/CardDAV
+# collections, proving the negative checks do not just deny a broken account.
+sed 's/Example Calendar Event/Bob Owned Calendar Event/' "$work/event.ics" >"$work/bob-event.ics"
+sed 's/Example Contact/Bob Owned Contact/' "$work/contact.vcf" >"$work/bob-contact.vcf"
+bob_calendar_url="$base/calendars/bob/default/bob-event.ics"
+bob_contact_url="$base/addressbooks/bob/default/bob-contact.vcf"
+bob_event_code="$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/calendar' \
+  --data-binary @"$work/bob-event.ics" "$bob_calendar_url")"
+if [[ "$bob_event_code" != 201 && "$bob_event_code" != 204 ]]; then
+  expect "$bob_event_code" 201 'Bob CalDAV own event PUT'
+fi
+bob_contact_code="$(status -u 'bob:bob-test-password-67890' -X PUT -H 'Content-Type: text/vcard' \
+  --data-binary @"$work/bob-contact.vcf" "$bob_contact_url")"
+if [[ "$bob_contact_code" != 201 && "$bob_contact_code" != 204 ]]; then
+  expect "$bob_contact_code" 201 'Bob CardDAV own contact PUT'
+fi
+expect "$(status -u 'bob:bob-test-password-67890' "$bob_calendar_url")" 200 'Bob reads own event'
+grep -q '^SUMMARY:Bob Owned Calendar Event' "$work/response"
+expect "$(status -u 'bob:bob-test-password-67890' "$bob_contact_url")" 200 'Bob reads own contact'
+grep -q '^FN:Bob Owned Contact' "$work/response"
+deny_tenant_access "$(status -u 'alice:alice-test-password-12345' "$bob_calendar_url")" 'Alice GET Bob event'
+deny_tenant_access "$(status -u 'alice:alice-test-password-12345' "$bob_contact_url")" 'Alice GET Bob contact'
+
 # Verify resource deletion and change-token REPORT semantics, including real stored objects.
 cat >"$work/sync.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
