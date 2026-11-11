@@ -94,10 +94,16 @@ if [[ "$v4_code" != 201 && "$v4_code" != 204 ]]; then
   expect "$v4_code" 201 'CardDAV vCard 4 PUT'
 fi
 expect "$(status -u 'alice:alice-test-password-12345' "$contact_v4_url")" 200 'CardDAV vCard 4 GET'
-grep -q '^VERSION:4.0' "$work/response"
-grep -q '^EMAIL;TYPE=home:home@example.invalid' "$work/response"
-grep -q '^EMAIL;TYPE=work:work@example.invalid' "$work/response"
-grep -q '^X-GOREECLOUD-TEST:opaque-synthetic-property' "$work/response"
+for expected in 'VERSION:4.0' 'EMAIL;TYPE=home:home@example.invalid' \
+    'EMAIL;TYPE=work:work@example.invalid' 'X-GOREECLOUD-TEST:opaque-synthetic-property'; do
+  if ! grep -Fiq "$expected" "$work/response"; then
+    printf 'vCard4 synthetic round-trip lost or changed expected field: %s\n' "$expected" >&2
+    # This fixture contains only example.invalid data and a synthetic property.
+    # Never use such response dumping with real users or production logs.
+    sed -n '1,24p' "$work/response" >&2
+    exit 1
+  fi
+done
 
 # Accounts get distinct physical WebDAV roots despite the same /files URL.
 printf 'confidential-test-content' >"$work/payload.txt"
